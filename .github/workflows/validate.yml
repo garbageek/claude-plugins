@@ -1,0 +1,80 @@
+name: Validate plugin artifacts
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate JSON files
+        run: |
+          python -m json.tool .claude-plugin/marketplace.json >/dev/null
+          python -m json.tool plugins/audit-workflow/.claude-plugin/plugin.json >/dev/null
+          python -m json.tool plugins/audit-workflow/.mcp.json >/dev/null
+          python -m json.tool plugins/audit-workflow/hooks/hooks.json >/dev/null
+
+      - name: Compile Python files
+        run: |
+          python -m py_compile \
+            plugins/audit-workflow/bin/audit \
+            plugins/audit-workflow/hooks/audit_guard.py \
+            plugins/audit-workflow/hooks/plugin_root.py \
+            plugins/audit-workflow/mcp/audit_mcp_server.py \
+            plugins/audit-workflow/scripts/audit_lib.py \
+            plugins/audit-workflow/scripts/generate_summary.py \
+            plugins/audit-workflow/scripts/generate_verification_report.py
+
+      - name: Validate Markdown frontmatter
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = (
+              list(Path("plugins/audit-workflow/agents").glob("*.md"))
+              + list(Path("plugins/audit-workflow/commands").glob("*.md"))
+              + list(Path("plugins/audit-workflow/skills").glob("*/SKILL.md"))
+          )
+
+          errors = []
+          for path in sorted(paths):
+              lines = path.read_text(encoding="utf-8").splitlines()
+              if not lines or lines[0] != "---":
+                  errors.append(f"{path}: missing opening frontmatter delimiter")
+                  continue
+              try:
+                  close = lines[1:].index("---") + 1
+              except ValueError:
+                  errors.append(f"{path}: missing closing frontmatter delimiter")
+                  continue
+              if close < 2:
+                  errors.append(f"{path}: empty frontmatter")
+              if any(line.startswith("--- ") or line.endswith(" ---") for line in lines[: close + 1]):
+                  errors.append(f"{path}: inline frontmatter delimiter")
+
+          if errors:
+              raise SystemExit("\n".join(errors))
+
+          print(f"frontmatter ok ({len(paths)} files)")
+          PY
+
+      - name: Validate plugin layout
+        run: |
+          test -f .claude-plugin/marketplace.json
+          test -f plugins/audit-workflow/.claude-plugin/plugin.json
+          test -d plugins/audit-workflow/skills
+          test -d plugins/audit-workflow/commands
+          test -d plugins/audit-workflow/agents
+          test -f plugins/audit-workflow/hooks/hooks.json
+          test -f plugins/audit-workflow/.mcp.json
+          test -x plugins/audit-workflow/bin/audit
