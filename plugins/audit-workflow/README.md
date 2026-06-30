@@ -15,16 +15,13 @@ bin/audit    portable CLI fallback
 
 ## Install from the local marketplace
 
-From the directory that contains `artur-plugins/`:
+Clone the marketplace repository and add the repository root:
 
 ```text
-/plugin marketplace add ./artur-plugins
+git clone https://github.com/garbageek/claude-plugins
+cd claude-plugins
+/plugin marketplace add .
 /plugin install audit-workflow@artur-plugins
-```
-
-Then reload plugins if needed:
-
-```text
 /reload-plugins
 ```
 

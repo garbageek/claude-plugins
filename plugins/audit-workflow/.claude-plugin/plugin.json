@@ -7,7 +7,7 @@
     "name": "Artur Kulik",
     "email": "arthur.kulik@icloud.com"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "keywords": [
     "audit",
     "code-review",
@@ -15,10 +15,5 @@
     "triage",
     "verification",
     "governance"
-  ],
-  "skills": "./skills/",
-  "commands": "./commands/",
-  "agents": "./agents/",
-  "hooks": "./hooks/hooks.json",
-  "mcpServers": "./.mcp.json"
+  ]
 }
