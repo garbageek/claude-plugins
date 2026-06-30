@@ -1,0 +1,24 @@
+{
+  "name": "audit-workflow",
+  "displayName": "Audit Workflow",
+  "version": "1.0.0",
+  "description": "Evidence-first governed audit workflow with discovery, triage, resolution, independent verification, CLI fallback, hooks, and MCP tools.",
+  "author": {
+    "name": "Artur Kulik",
+    "email": "arthur.kulik@icloud.com"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "audit",
+    "code-review",
+    "agent-workflow",
+    "triage",
+    "verification",
+    "governance"
+  ],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "agents": "./agents/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
+}

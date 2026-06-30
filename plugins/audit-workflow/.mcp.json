@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "audit-workflow": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/audit_mcp_server.py"
+      ],
+      "env": {
+        "AUDIT_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+        "AUDIT_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

@@ -1,0 +1,2081 @@
+#!/usr/bin/env python3
+"""
+audit — project-agnostic audit ticket workflow manager.
+
+Usage:
+    audit <command> [options]
+
+Common commands:
+    init [--json]
+    create <category> --title '...' --severity <level> [--module 'path'] [--evidence '...'] [--acceptance-criterion '...']
+    open <id>... --as audit-discovery
+    resolve <id>... --fix-commit SHA --evidence '...' --test '...' --as audit-resolution
+    verify <id>... --status PASS --verified-commit SHA --criterion 'AC1: pass - ...' --evidence '...' --test '...' --verdict '...' --as audit-verification
+    list [--status STATUS] [--category CAT] [--severity SEV] [--unverified] [--json]
+    show <id>...
+    status <id>... [--json]
+    summary [--json]
+    next --for resolution|verification [--category CAT] [--severity SEV]
+    doctor [--fix] [--strict]
+    export [--json]
+    baseline create|compare [--tag TAG]
+
+Run from the project root directory, or pass --root /path/to/project. In the plugin, this executable is available as `audit` from Bash while the plugin is enabled.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from collections import Counter, defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any, Iterable, Optional, Sequence
+
+# Keep this script directly copyable. When audit_lib.py is present we import the
+# shared constants/helpers; otherwise the CLI falls back to the same definitions.
+try:  # pragma: no cover - fallback exists for local single-file copy mode
+    from audit_lib import (  # type: ignore
+        ACTOR_ROLES,
+        ALLOWED_TRANSITIONS,
+        VALID_CATEGORIES,
+        VALID_SEVERITIES,
+        VALID_STATUSES,
+        VERIFICATION_STATUSES,
+        _field,
+        allowed_statuses,
+        can_set_status,
+        parse_ticket_filename,
+    )
+except ModuleNotFoundError:  # pragma: no cover
+    VALID_CATEGORIES = {
+        "BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY",
+    }
+    VALID_SEVERITIES = {"critical", "high", "medium", "low"}
+    VALID_STATUSES = {
+        "DRAFT", "OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL",
+        "REGRESS", "BLOCKED", "WONTFIX", "INVALID",
+    }
+    VERIFICATION_STATUSES = {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"}
+    ACTOR_ROLES: dict[str, set[str]] = {
+        "audit-discovery": {"DRAFT", "OPEN"},
+        "audit-resolution": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX"},
+        "audit-verification": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
+    }
+    ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        "DRAFT": {"OPEN", "INVALID"},
+        "OPEN": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX", "INVALID"},
+        "READY_FOR_VERIFICATION": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
+        "PARTIAL": {"READY_FOR_VERIFICATION", "PASS", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
+        "FAIL": {"READY_FOR_VERIFICATION", "WONTFIX", "INVALID", "BLOCKED"},
+        "REGRESS": {"READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
+        "BLOCKED": {"OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "WONTFIX", "INVALID"},
+        "PASS": {"REGRESS"},
+        "WONTFIX": {"OPEN"},
+        "INVALID": {"OPEN"},
+    }
+
+    CATEGORY_PATTERN = "|".join(sorted(map(re.escape, VALID_CATEGORIES), key=len, reverse=True))
+
+    def _field(text: str, label: str) -> str:
+        pattern_strict = rf"\*\*{re.escape(label)}:\*\*\s+`([^`\n]*)`"
+        m = re.search(pattern_strict, text)
+        if m:
+            return m.group(1).strip()
+        pattern_fallback = rf"\*\*{re.escape(label)}:\*\*\s+([^\n]+)"
+        m = re.search(pattern_fallback, text)
+        if not m:
+            return ""
+        value = m.group(1).strip()
+        if value == "``":
+            return ""
+        if value.startswith("`") and value.endswith("`"):
+            return value[1:-1].strip()
+        return value
+
+    def parse_ticket_filename(name: str) -> tuple[Optional[int], str, str]:
+        num_match = re.match(r"^(\d+)", name)
+        num = int(num_match.group(1)) if num_match else None
+        m = re.match(rf"^(\d+)-({CATEGORY_PATTERN})-(.+)\.md$", name)
+        category = m.group(2) if m else "?"
+        slug = m.group(3) if m else name
+        return num, category, slug
+
+    def allowed_statuses(actor: str) -> set[str] | None:
+        return ACTOR_ROLES.get(actor)
+
+    def can_set_status(actor: str, status: str) -> bool:
+        allowed = allowed_statuses(actor)
+        return allowed is not None and status.upper() in allowed
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Global path handling
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _consume_global_flags_and_help_alias() -> None:
+    """Remove --root for manual subcommand dispatch and support `audit help`."""
+    args = sys.argv[1:]
+    cleaned: list[str] = []
+    skip_next = False
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--root":
+            skip_next = True
+            continue
+        cleaned.append(arg)
+    if cleaned and cleaned[0] == "help":
+        cleaned[0] = "--help"
+    sys.argv = [sys.argv[0]] + cleaned
+
+
+def _resolve_root() -> Path:
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--root" and i < len(sys.argv) - 1:
+            p = Path(sys.argv[i + 1]).resolve()
+            if not p.is_dir():
+                print(f"Error: --root path does not exist or is not a directory: {p}", file=sys.stderr)
+                sys.exit(2)
+            return p
+    env = os.environ.get("AUDIT_ROOT")
+    if env:
+        p = Path(env).resolve()
+        if not p.is_dir():
+            print(f"Error: AUDIT_ROOT does not exist or is not a directory: {p}", file=sys.stderr)
+            sys.exit(2)
+        return p
+    return Path.cwd()
+
+
+ROOT = _resolve_root()
+_consume_global_flags_and_help_alias()
+
+TICKETS_DIR = ROOT / "audit" / "tickets"
+VERIF_DIR = ROOT / "audit" / "verification" / "details"
+TRIAGE_DIR = ROOT / "audit" / "triage"
+CREATE_LOCK = ROOT / "audit" / ".create.lock"
+
+_STUB_RE = re.compile(r"^\d+\.md$")
+_PLACEHOLDER_RE = re.compile(r"<!--.*?-->|\bTODO\b|\{[^{}]+\}", re.IGNORECASE | re.DOTALL)
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "?": 4, "unknown": 4}
+_PLEVEL_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 4, "?": 4}
+_PASS_LIKE = {"PASS", "WONTFIX", "INVALID"}
+
+
+class AuditError(Exception):
+    def __init__(self, message: str, code: int = 2):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+@dataclass
+class ItemResult:
+    id: str
+    ok: bool
+    message: str = ""
+    path: str = ""
+    status: str = ""
+    error: str = ""
+
+
+@dataclass
+class BatchResult:
+    ok: bool
+    updated: list[ItemResult] = field(default_factory=list)
+    failed: list[ItemResult] = field(default_factory=list)
+    status: str = ""
+
+    def exit_code(self) -> int:
+        if self.failed and self.updated:
+            return 1
+        if self.failed:
+            return 1
+        return 0
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "status": self.status,
+            "updated": [r.__dict__ for r in self.updated],
+            "failed": [r.__dict__ for r in self.failed],
+        }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generic helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _ticket_num(name: str) -> Optional[int]:
+    m = re.match(r"^(\d+)", name)
+    return int(m.group(1)) if m else None
+
+
+def _parse_id(raw: str) -> int:
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise AuditError(f"invalid ticket id: {raw}", 2) from exc
+
+
+def _slugify(title: str) -> str:
+    slug = re.sub(r"[^\w\s-]", "", title.lower())
+    slug = re.sub(r"[\s_]+", "-", slug).strip("-")[:60]
+    return slug or "ticket"
+
+
+def _split_ids(value: str) -> list[str]:
+    if not value or value.lower() == "none":
+        return []
+    return [x.strip().zfill(3) for x in re.split(r"[,\s]+", value) if x.strip()]
+
+
+def _join_ids(values: Iterable[str]) -> str:
+    cleaned = [str(v).strip().zfill(3) for v in values if str(v).strip()]
+    return ", ".join(cleaned) if cleaned else "none"
+
+
+def md_cell(value: Any) -> str:
+    """Escape a value for safe insertion into a Markdown table cell."""
+    text = "" if value is None else str(value)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def _json_print(payload: Any) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _write_if_missing(path: Path, text: str) -> bool:
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
+def _touch_gitkeep(directory: Path) -> bool:
+    directory.mkdir(parents=True, exist_ok=True)
+    keep = directory / ".gitkeep"
+    if keep.exists():
+        return False
+    keep.write_text("", encoding="utf-8")
+    return True
+
+
+def _audit_readme_text() -> str:
+    return """# Audit Workflow
+
+This directory stores machine-managed audit tickets and independent verification records.
+
+## Canonical flow
+
+```text
+DRAFT -> OPEN -> READY_FOR_VERIFICATION -> PASS/PARTIAL/FAIL/REGRESS/BLOCKED/WONTFIX/INVALID
+```
+
+## First commands
+
+```bash
+audit doctor
+audit summary
+audit next --for resolution
+audit next --for verification
+```
+
+## Roles
+
+- `audit-discovery`: creates evidence-backed tickets and promotes DRAFT to OPEN.
+- `audit-resolution`: implements fixes and stops at READY_FOR_VERIFICATION.
+- `audit-verification`: independently verifies and is the only normal role that can PASS.
+
+## Source of truth
+
+Use `audit export --json` for automation. Markdown files are human-readable records, but status changes should go through the CLI.
+"""
+
+
+def _triage_readme_text() -> str:
+    return """# Audit Triage
+
+Triage metadata is executable: `audit next --for resolution` consumes priority and dependency data.
+
+Use:
+
+```bash
+audit triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
+audit deps add 001 --depends-on 003
+```
+
+Dependency semantics: `003 blocks 001`, so ticket 001 waits until ticket 003 is resolved.
+"""
+
+
+def _dependencies_text() -> str:
+    return """# Dependencies
+
+Canonical dependency syntax:
+
+```text
+# Real entries use this form; keep examples commented in onboarding docs.
+# 003 blocks 001
+```
+
+Meaning: ticket 001 depends on ticket 003.
+
+The equivalent CLI command is:
+
+```bash
+audit deps add 001 --depends-on 003
+```
+"""
+
+
+def _initialize_audit_tree(write_docs: bool = True) -> dict[str, Any]:
+    created_dirs: list[str] = []
+    created_files: list[str] = []
+    dirs = [
+        TICKETS_DIR,
+        VERIF_DIR,
+        TRIAGE_DIR,
+        ROOT / "audit" / "baselines",
+    ]
+    for directory in dirs:
+        existed = directory.is_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        if not existed:
+            created_dirs.append(_rel(directory))
+        if _touch_gitkeep(directory):
+            created_files.append(_rel(directory / ".gitkeep"))
+    if write_docs:
+        if _write_if_missing(ROOT / "audit" / "README.md", _audit_readme_text()):
+            created_files.append(_rel(ROOT / "audit" / "README.md"))
+        if _write_if_missing(TRIAGE_DIR / "README.md", _triage_readme_text()):
+            created_files.append(_rel(TRIAGE_DIR / "README.md"))
+        if _write_if_missing(TRIAGE_DIR / "dependencies.md", _dependencies_text()):
+            created_files.append(_rel(TRIAGE_DIR / "dependencies.md"))
+    return {
+        "ok": True,
+        "root": str(ROOT),
+        "created_dirs": created_dirs,
+        "created_files": created_files,
+        "already_initialized": not created_dirs and not created_files,
+    }
+
+
+@contextmanager
+def _create_lock_cm():
+    CREATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    handle = None
+    locked = False
+    try:
+        handle = CREATE_LOCK.open("a+", encoding="utf-8")
+        try:
+            import fcntl  # type: ignore
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
+        except BlockingIOError as exc:
+            raise AuditError(f"audit create/update lock is held: {CREATE_LOCK}", 1) from exc
+        except (ImportError, OSError):
+            pass
+        yield
+    finally:
+        if handle is not None:
+            if locked:
+                try:
+                    import fcntl  # type: ignore
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+            handle.close()
+
+
+def _named_verif_files() -> list[Path]:
+    if not VERIF_DIR.is_dir():
+        return []
+    return sorted(p for p in VERIF_DIR.glob("*.md") if not _STUB_RE.match(p.name))
+
+
+def _all_ticket_files() -> list[Path]:
+    if not TICKETS_DIR.is_dir():
+        return []
+    return sorted(TICKETS_DIR.glob("*.md"))
+
+
+def _existing_ticket_numbers() -> set[int]:
+    nums: set[int] = set()
+    for path in list(_all_ticket_files()) + list(_named_verif_files()):
+        num = _ticket_num(path.name)
+        if num is not None:
+            nums.add(num)
+    return nums
+
+
+def _next_ticket_number() -> int:
+    existing = _existing_ticket_numbers()
+    return (max(existing) + 1) if existing else 1
+
+
+def _ticket_for(num: int) -> Optional[Path]:
+    candidates = list(TICKETS_DIR.glob(f"{num}-*.md")) + list(TICKETS_DIR.glob(f"{num:03d}-*.md"))
+    return next((p for p in candidates if not _STUB_RE.match(p.name)), None)
+
+
+def _verif_for(num: int, ticket_path: Optional[Path] = None) -> Optional[Path]:
+    if not VERIF_DIR.is_dir():
+        return None
+    candidates: list[Path] = []
+    for pat in (f"{num}-*.md", f"{num:03d}-*.md"):
+        candidates.extend(p for p in VERIF_DIR.glob(pat) if not _STUB_RE.match(p.name))
+    if not candidates:
+        return None
+    if ticket_path is not None:
+        for p in candidates:
+            if p.name == ticket_path.name:
+                return p
+    return sorted(candidates)[0]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Markdown parsing/updating
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _replace_field(text: str, label: str, value: str) -> str:
+    pattern = rf"^(\*\*{re.escape(label)}:\*\*\s+)(?:`[^`\n]*`|[^\n]*)"
+    new, n = re.subn(
+        pattern,
+        lambda m: f"{m.group(1)}`{value}`",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    return new if n else text
+
+
+def _ensure_field_after(text: str, after_label: str, label: str, value: str) -> str:
+    if re.search(rf"^\*\*{re.escape(label)}:\*\*", text, flags=re.MULTILINE):
+        return _replace_field(text, label, value)
+    after_pattern = rf"^(\*\*{re.escape(after_label)}:\*\*\s+(?:`[^`\n]*`|[^\n]*))$"
+    new, n = re.subn(
+        after_pattern,
+        lambda m: f"{m.group(1)}\n**{label}:** `{value}`",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    return new if n else text.rstrip() + f"\n**{label}:** `{value}`\n"
+
+
+def _section_content(text: str, section: str) -> str:
+    m = re.search(rf"^{re.escape(section)}\s*$", text, flags=re.MULTILINE)
+    if not m:
+        return ""
+    start = m.end()
+    next_m = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
+    end = start + next_m.start() if next_m else len(text)
+    return text[start:end].strip()
+
+
+def _replace_section(text: str, section: str, body: str) -> str:
+    header_re = rf"^{re.escape(section)}\s*$"
+    m = re.search(header_re, text, flags=re.MULTILINE)
+    body = body.strip()
+    if not m:
+        return text.rstrip() + f"\n\n{section}\n\n{body}\n"
+    start = m.end()
+    next_m = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
+    end = start + next_m.start() if next_m else len(text)
+    return text[:start] + f"\n\n{body}\n\n" + text[end:].lstrip("\n")
+
+
+def _append_to_section(text: str, section: str, content: str) -> str:
+    existing = _section_content(text, section)
+    if existing:
+        new_body = existing.rstrip() + "\n" + content.strip()
+    else:
+        new_body = content.strip()
+    return _replace_section(text, section, new_body)
+
+
+def _has_nonplaceholder_content(text: str, section: str) -> bool:
+    content = _section_content(text, section)
+    if not content:
+        return False
+    cleaned = _PLACEHOLDER_RE.sub("", content).strip()
+    # Empty unchecked list markers do not count as evidence/criteria.
+    cleaned = re.sub(r"^-\s*\[[ xX]\]\s*$", "", cleaned, flags=re.MULTILINE).strip()
+    return bool(cleaned)
+
+
+def _acceptance_criteria(ticket_text: str) -> dict[str, str]:
+    content = _section_content(ticket_text, "## Acceptance Criteria")
+    criteria: dict[str, str] = {}
+    auto = 1
+    for line in content.splitlines():
+        raw = line.strip()
+        if not raw.startswith("-"):
+            continue
+        raw = _PLACEHOLDER_RE.sub("", raw).strip()
+        raw = re.sub(r"^-\s*\[[ xX]\]\s*", "", raw).strip()
+        if not raw:
+            continue
+        m = re.match(r"^(AC\d+)\s*[:.-]\s*(.+)$", raw, flags=re.IGNORECASE)
+        if m:
+            cid = m.group(1).upper()
+            criteria[cid] = m.group(2).strip()
+        else:
+            cid = f"AC{auto}"
+            criteria[cid] = raw
+        auto += 1
+    return criteria
+
+
+def _criteria_result_ids(text: str) -> set[str]:
+    content = _section_content(text, "## Criteria Results") or _section_content(text, "## Verification Checklist")
+    ids: set[str] = set()
+    for line in content.splitlines():
+        if re.search(r"\bpass\b", line, flags=re.IGNORECASE) or "[x]" in line.lower():
+            ids.update(m.group(1).upper() for m in re.finditer(r"\b(AC\d+)\b", line, flags=re.IGNORECASE))
+    return ids
+
+
+def _history_header() -> str:
+    return "| Time | Status | Commit | Actor | Verdict |\n|---|---|---|---|---|\n"
+
+
+def _append_history(text: str, status: str, commit: str, actor: str, verdict: str) -> str:
+    now = datetime.now().isoformat(timespec="seconds")
+    line = f"| {md_cell(now)} | `{md_cell(status)}` | `{md_cell(commit)}` | {md_cell(actor)} | {md_cell(verdict)} |"
+    if "## Status History" not in text:
+        return text.rstrip() + f"\n\n## Status History\n\n{_history_header()}{line}\n"
+    header = _history_header()
+    if header in text:
+        return text.replace(header, header + line + "\n", 1)
+    return _append_to_section(text, "## Status History", line)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Canonical parsing/model
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def parse_ticket(path: Path) -> dict[str, Any]:
+    name = path.name
+    num, category, slug = parse_ticket_filename(name)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    severity = _field(text, "Severity") or _field(text, "severity") or "?"
+    module = _field(text, "Module") or _field(text, "Target Module") or "?"
+    title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    title = title_m.group(1).strip() if title_m else slug
+    return {
+        "num": num,
+        "id": f"{num:03d}" if num is not None else "???",
+        "category": category,
+        "slug": slug,
+        "severity": severity.lower(),
+        "module": module,
+        "title": title,
+        "depends_on": _split_ids(_field(text, "Depends On")),
+        "blocks": _split_ids(_field(text, "Blocks")),
+        "impact": _field(text, "Impact"),
+        "effort": _field(text, "Effort"),
+        "priority": _field(text, "Priority"),
+        "p_level": (_field(text, "P-level") or _field(text, "P Level") or "").upper(),
+        "decision": (_field(text, "Decision") or "FIX").upper(),
+        "phase": _field(text, "Phase"),
+        "path": str(path),
+        "_path": path,
+        "_text": text,
+    }
+
+
+def parse_verification(path: Path) -> dict[str, Any]:
+    name = path.name
+    num = _ticket_num(name)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    status = _field(text, "Verification Status") or _field(text, "Status") or "?"
+    return {
+        "num": num,
+        "id": f"{num:03d}" if num is not None else "???",
+        "status": status.upper(),
+        "resolved_date": _field(text, "Resolved Date"),
+        "resolved_by": _field(text, "Resolved By"),
+        "verified_date": _field(text, "Verified Date") or _field(text, "Date") or "",
+        "verified_by": _field(text, "Verified By") or "",
+        "commit": _field(text, "Fix Commit") or "",
+        "verified_commit": _field(text, "Verified Commit") or _field(text, "Commit Verified At") or "",
+        "verdict": _section_content(text, "## Verdict"),
+        "evidence": _section_content(text, "## Evidence"),
+        "path": str(path),
+        "_path": path,
+        "_text": text,
+    }
+
+
+def _load_triage_metadata() -> dict[str, dict[str, Any]]:
+    """Parse latest triage priority matrix if present."""
+    meta: dict[str, dict[str, Any]] = {}
+    docs = sorted(TRIAGE_DIR.glob("triage-*.md")) if TRIAGE_DIR.is_dir() else []
+    if not docs:
+        return meta
+    text = docs[-1].read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        if not line.strip().startswith("|") or "---" in line:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 7 or cells[0].lower() == "ticket":
+            continue
+        ticket_id = cells[0].strip().zfill(3)
+        if not ticket_id.isdigit():
+            continue
+        # Template columns: Ticket Category Severity Impact Effort Priority P-level Group [Decision]
+        meta[ticket_id] = {
+            "impact": cells[3] if len(cells) > 3 else "",
+            "effort": cells[4] if len(cells) > 4 else "",
+            "priority": cells[5] if len(cells) > 5 else "",
+            "p_level": cells[6].upper() if len(cells) > 6 else "",
+            "phase": cells[7] if len(cells) > 7 else "",
+            "decision": cells[8].upper() if len(cells) > 8 else "FIX",
+        }
+    return meta
+
+
+def _load_dependency_edges() -> dict[str, set[str]]:
+    """Return dependency map: ticket -> dependencies."""
+    deps: dict[str, set[str]] = defaultdict(set)
+    dep_path = TRIAGE_DIR / "dependencies.md"
+    if not dep_path.exists():
+        return deps
+    text = dep_path.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r"^(\d+)\s+blocks\s+(\d+)$", line)
+        if m:
+            blocker, blocked = m.group(1).zfill(3), m.group(2).zfill(3)
+            deps[blocked].add(blocker)
+            continue
+        m = re.match(r"^(\d+)\s+depends_on\s+(\d+)$", line)
+        if m:
+            blocked, blocker = m.group(1).zfill(3), m.group(2).zfill(3)
+            deps[blocked].add(blocker)
+    return deps
+
+
+def load_records() -> list[dict[str, Any]]:
+    verif_index: dict[int, dict[str, Any]] = {}
+    for path in _named_verif_files():
+        v = parse_verification(path)
+        if v["num"] is not None:
+            verif_index[v["num"]] = v
+
+    triage_meta = _load_triage_metadata()
+    dependency_edges = _load_dependency_edges()
+
+    records: list[dict[str, Any]] = []
+    for path in _all_ticket_files():
+        t = parse_ticket(path)
+        num = t["num"]
+        v = verif_index.get(num, {}) if num is not None else {}
+        tid = t["id"]
+        meta = triage_meta.get(tid, {})
+        depends_on = sorted(set(t["depends_on"]) | dependency_edges.get(tid, set()))
+        record = {
+            **{k: v2 for k, v2 in t.items() if not k.startswith("_")},
+            "status": v.get("status", "UNVERIFIED"),
+            "verification_path": v.get("path", ""),
+            "resolved_date": v.get("resolved_date", ""),
+            "resolved_by": v.get("resolved_by", ""),
+            "fix_commit": v.get("commit", ""),
+            "verified_date": v.get("verified_date", ""),
+            "verified_by": v.get("verified_by", ""),
+            "verified_commit": v.get("verified_commit", ""),
+            "verdict": v.get("verdict", ""),
+            "verification_evidence": v.get("evidence", ""),
+            "depends_on": depends_on,
+            "blocks": t["blocks"],
+            "impact": meta.get("impact") or t["impact"],
+            "effort": meta.get("effort") or t["effort"],
+            "priority": meta.get("priority") or t["priority"],
+            "p_level": meta.get("p_level") or t["p_level"],
+            "decision": meta.get("decision") or t["decision"],
+            "phase": meta.get("phase") or t["phase"],
+            "ticket_hash": _hash_file(path),
+            "verification_hash": _hash_file(Path(v["path"])) if v.get("path") else "",
+        }
+        records.append(record)
+
+    ticket_nums = {r["num"] for r in records if r["num"] is not None}
+    for v in verif_index.values():
+        if v["num"] not in ticket_nums:
+            records.append({
+                "num": v["num"],
+                "id": v["id"],
+                "category": "?",
+                "slug": Path(v["path"]).stem,
+                "severity": "?",
+                "module": "",
+                "title": f"[orphaned verif] {Path(v['path']).name}",
+                "path": "",
+                "status": v["status"],
+                "verification_path": v["path"],
+                "verdict": v.get("verdict", ""),
+                "verification_evidence": v.get("evidence", ""),
+                "depends_on": [],
+                "blocks": [],
+            })
+    return sorted(records, key=lambda r: (r.get("num") is None, r.get("num") or 10**9))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Validation and transitions
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _require_actor(actor: str, target_status: str) -> None:
+    if not actor:
+        raise AuditError("--as is required for status-changing commands", 2)
+    if actor not in ACTOR_ROLES:
+        raise AuditError(f"unknown actor '{actor}'. Valid: {', '.join(sorted(ACTOR_ROLES))}", 2)
+    if not can_set_status(actor, target_status):
+        allowed = allowed_statuses(actor) or set()
+        raise AuditError(
+            f"{actor} cannot set {target_status}. Allowed: {', '.join(sorted(allowed)) or 'none'}",
+            2,
+        )
+
+
+def _validate_transition(current: str, target: str) -> None:
+    current = (current or "UNVERIFIED").upper()
+    target = target.upper()
+    allowed = ALLOWED_TRANSITIONS.get(current, set())
+    if target == current:
+        # Allow idempotent refresh of metadata for non-terminal in-progress states.
+        if target in {"DRAFT", "OPEN", "READY_FOR_VERIFICATION", "BLOCKED"}:
+            return
+    if target not in allowed:
+        raise AuditError(f"invalid transition: {current} -> {target}", 2)
+
+
+def _ticket_ready_for_open(ticket_text: str) -> tuple[bool, list[str]]:
+    missing: list[str] = []
+    for section in ("## Description", "## Evidence", "## Acceptance Criteria", "## Suggested Verification"):
+        if not _has_nonplaceholder_content(ticket_text, section):
+            missing.append(section)
+    return not missing, missing
+
+
+def _pass_ready(ticket_path: Path, verif_text: str, criteria_args: Sequence[str]) -> tuple[bool, list[str]]:
+    ticket_text = ticket_path.read_text(encoding="utf-8", errors="replace")
+    criteria = _acceptance_criteria(ticket_text)
+    missing: list[str] = []
+    if not criteria:
+        missing.append("ticket has no non-placeholder acceptance criteria")
+    provided_ids: set[str] = set()
+    for raw in criteria_args:
+        provided_ids.update(m.group(1).upper() for m in re.finditer(r"\b(AC\d+)\b", raw, flags=re.IGNORECASE))
+    existing_ids = _criteria_result_ids(verif_text)
+    covered = provided_ids | existing_ids
+    for cid in criteria:
+        if cid not in covered:
+            missing.append(f"missing passing evidence for {cid}")
+    if not _has_nonplaceholder_content(verif_text, "## Evidence") and not criteria_args:
+        missing.append("verification evidence is empty")
+    if not _has_nonplaceholder_content(verif_text, "## Test Verification"):
+        missing.append("test verification is empty")
+    if not _has_nonplaceholder_content(verif_text, "## Verdict"):
+        missing.append("verdict is empty")
+    return not missing, missing
+
+
+def _validate_transition_requirements(
+    target: str,
+    ticket_path: Optional[Path],
+    verif_text: str,
+    *,
+    fix_commit: Optional[str] = None,
+    verified_commit: Optional[str] = None,
+    verdict: Optional[str] = None,
+    evidence: Sequence[str] = (),
+    test: Optional[str] = None,
+    criteria: Sequence[str] = (),
+    reason: Optional[str] = None,
+) -> None:
+    target = target.upper()
+    if target == "OPEN":
+        if ticket_path is None:
+            raise AuditError("OPEN requires an existing ticket file", 2)
+        ok, missing = _ticket_ready_for_open(ticket_path.read_text(encoding="utf-8", errors="replace"))
+        if not ok:
+            raise AuditError(f"OPEN requires evidence-ready ticket content; missing: {', '.join(missing)}", 2)
+    elif target == "READY_FOR_VERIFICATION":
+        existing_commit = _field(verif_text, "Fix Commit")
+        existing_evidence = _has_nonplaceholder_content(verif_text, "## Resolution Evidence") or _has_nonplaceholder_content(verif_text, "## Evidence")
+        existing_test = _has_nonplaceholder_content(verif_text, "## Test Verification")
+        if not (fix_commit or existing_commit):
+            raise AuditError("READY_FOR_VERIFICATION requires --fix-commit", 2)
+        if not (evidence or existing_evidence):
+            raise AuditError("READY_FOR_VERIFICATION requires --evidence or existing resolution evidence", 2)
+        if not (test or existing_test):
+            raise AuditError("READY_FOR_VERIFICATION requires --test or existing test verification", 2)
+    elif target == "PASS":
+        if ticket_path is None:
+            raise AuditError("PASS requires an existing ticket file", 2)
+        prospective = verif_text
+        if evidence:
+            prospective = _append_to_section(prospective, "## Evidence", "\n".join(f"- {x}" for x in evidence))
+        if test:
+            prospective = _append_to_section(prospective, "## Test Verification", test)
+        if verdict:
+            prospective = _replace_section(prospective, "## Verdict", f"**PASS**\n\n{verdict}")
+        ok, missing = _pass_ready(ticket_path, prospective, criteria)
+        if not ok:
+            raise AuditError("PASS requirements not met: " + "; ".join(missing), 2)
+        if not (verified_commit or _field(verif_text, "Verified Commit") or _field(verif_text, "Commit Verified At")):
+            raise AuditError("PASS requires --verified-commit or existing Verified Commit", 2)
+    elif target in {"WONTFIX", "INVALID", "BLOCKED"}:
+        rationale = reason or verdict or _section_content(verif_text, "## Verdict")
+        if not rationale or not _PLACEHOLDER_RE.sub("", rationale).strip():
+            raise AuditError(f"{target} requires --reason or --verdict rationale", 2)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Git helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _inside_git_repo() -> bool:
+    result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT, capture_output=True, text=True)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _ensure_clean_worktree(allow_dirty: bool = False) -> None:
+    if not _inside_git_repo():
+        return
+    result = subprocess.run(["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True)
+    dirty = result.stdout.strip()
+    if dirty and not allow_dirty:
+        raise AuditError(
+            "dirty worktree before audit metadata commit; commit/stash changes or pass --allow-dirty\n" + dirty,
+            1,
+        )
+
+
+def _git_commit(paths: Sequence[Path], message: str, allow_dirty: bool = False) -> str:
+    _ensure_clean_worktree(allow_dirty=allow_dirty)
+    if not paths:
+        return ""
+    subprocess.run(["git", "add", "-f", *[str(p) for p in paths]], cwd=ROOT, check=True)
+    result = subprocess.run(["git", "commit", "-m", message], cwd=ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AuditError("git commit failed: " + (result.stderr.strip() or result.stdout.strip()), 1)
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    return sha.stdout.strip() if sha.returncode == 0 else ""
+
+
+def _hash_file(path: Path) -> str:
+    if not path or not path.exists():
+        return ""
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File writers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _infer_source() -> str:
+    agent = os.environ.get("AGENT_NAME", "")
+    return f"code review by {agent}" if agent else "code review"
+
+
+def _ticket_text(
+    *,
+    title: str,
+    category: str,
+    severity: str,
+    module: str,
+    lines: str,
+    source: str,
+    depends_on: Sequence[str],
+    blocks: Sequence[str],
+    description: Optional[str],
+    expected: Optional[str],
+    actual: Optional[str],
+    evidence: Sequence[str],
+    recommendation: Optional[str],
+    criteria: Sequence[str],
+    suggested_verification: Optional[str],
+) -> str:
+    desc = description or "<!-- TODO: Add a clear, factual description of the issue. -->"
+    exp = expected or "<!-- TODO: What should happen according to requirements, design, or user expectations. -->"
+    act = actual or "<!-- TODO: What actually happens. Include error messages, wrong output, crash details. -->"
+    ev = "\n".join(f"- {e}" for e in evidence) if evidence else "<!-- TODO: Add concrete evidence: code snippets, log lines, traces, reproduction steps. -->"
+    rec = recommendation or "<!-- TODO: Add actionable fix: what to change, where, and why. -->"
+    if criteria:
+        ac = "\n".join(f"- [ ] AC{i}: {c}" for i, c in enumerate(criteria, 1))
+    else:
+        ac = "- [ ] <!-- TODO: AC1: observable, testable condition that resolves the issue. -->"
+    sv = suggested_verification or "<!-- TODO: specific test commands, reproduction steps, or assertions an independent verifier should run. -->"
+    return (
+        f"# {title}\n\n"
+        f"**Category:** `{category}`\n"
+        f"**Severity:** `{severity}`\n"
+        f"**Module:** `{module}`\n"
+        f"**Lines:** `{lines}`\n"
+        f"**Source:** `{source}`\n"
+        f"**Depends On:** `{_join_ids(depends_on)}`\n"
+        f"**Blocks:** `{_join_ids(blocks)}`\n"
+        f"**Impact:** ``\n"
+        f"**Effort:** ``\n"
+        f"**Priority:** ``\n"
+        f"**P-level:** ``\n"
+        f"**Decision:** `FIX`\n"
+        f"**Phase:** ``\n\n"
+        f"## Description\n\n{desc}\n\n"
+        f"## Expected Behavior\n\n{exp}\n\n"
+        f"## Actual Behavior\n\n{act}\n\n"
+        f"## Evidence\n\n{ev}\n\n"
+        f"## Recommendation\n\n{rec}\n\n"
+        f"## Acceptance Criteria\n\n{ac}\n\n"
+        f"## Suggested Verification\n\n{sv}\n"
+    )
+
+
+def _verification_text(num: int, category: str, severity: str, slug: str, status: str) -> str:
+    return (
+        f"# Verification: {num:03d}-{category}-{slug}\n\n"
+        f"**Original Ticket:** `audit/tickets/{num:03d}-{category}-{slug}.md`\n"
+        f"**Original Category:** `{category}`\n"
+        f"**Original Severity:** `{severity}`\n"
+        f"**Verification Status:** `{status}`\n"
+        f"**Resolved Date:** ``\n"
+        f"**Resolved By:** ``\n"
+        f"**Verified Date:** ``\n"
+        f"**Verified By:** ``\n"
+        f"**Fix Commit:** ``\n"
+        f"**Verified Commit:** ``\n\n"
+        f"## Original Issue\n\n"
+        f"## Resolution Evidence\n\n"
+        f"## Criteria Results\n\n"
+        f"## Verification Checklist\n\n- [ ] \n\n"
+        f"## Current State\n\n"
+        f"## Evidence\n\n"
+        f"## Test Verification\n\n"
+        f"## Verdict\n\n"
+    )
+
+
+def _write_stub_verification(vpath: Path, num: int, ticket_path: Path) -> None:
+    t = parse_ticket(ticket_path)
+    status = "DRAFT" if not _ticket_ready_for_open(t["_text"])[0] else "OPEN"
+    text = _verification_text(num, t["category"], t["severity"], t["slug"], status)
+    vpath.write_text(text, encoding="utf-8")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Commands
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    result = _initialize_audit_tree(write_docs=not getattr(args, "no_docs", False))
+    if args.json:
+        _json_print(result)
+        return
+    if result["already_initialized"]:
+        print(f"Audit workflow already initialized at {_rel(ROOT / 'audit')}")
+        return
+    print(f"Initialized audit workflow at {_rel(ROOT / 'audit')}")
+    if result["created_dirs"]:
+        print("Created directories:")
+        for item in result["created_dirs"]:
+            print(f"  - {item}")
+    if result["created_files"]:
+        print("Created files:")
+        for item in result["created_files"]:
+            print(f"  - {item}")
+
+
+def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
+    cat = (args.category or "").upper()
+    if cat not in VALID_CATEGORIES:
+        raise AuditError(f"unknown category '{args.category}'. Valid: {', '.join(sorted(VALID_CATEGORIES))}", 2)
+    sev = args.severity.lower()
+    if sev not in VALID_SEVERITIES:
+        raise AuditError(f"unknown severity '{args.severity}'. Valid: {', '.join(sorted(VALID_SEVERITIES))}", 2)
+
+    slug = _slugify(args.title)
+    TICKETS_DIR.mkdir(parents=True, exist_ok=True)
+    VERIF_DIR.mkdir(parents=True, exist_ok=True)
+
+    ticket_body = _ticket_text(
+        title=args.title,
+        category=cat,
+        severity=sev,
+        module=args.module,
+        lines=args.lines,
+        source=args.source or _infer_source(),
+        depends_on=args.depends_on or [],
+        blocks=args.blocks or [],
+        description=args.description,
+        expected=args.expected,
+        actual=args.actual,
+        evidence=args.evidence or [],
+        recommendation=args.recommendation,
+        criteria=args.acceptance_criterion or [],
+        suggested_verification=args.suggested_verification,
+    )
+    ready, missing = _ticket_ready_for_open(ticket_body)
+    if args.open and not ready:
+        raise AuditError(f"--open requires evidence-ready content; missing: {', '.join(missing)}", 2)
+    status = "OPEN" if ready else "DRAFT"
+
+    with _create_lock_cm():
+        next_num = _next_ticket_number()
+        ticket_name = f"{next_num:03d}-{cat}-{slug}.md"
+        verif_name = ticket_name
+        ticket_path = TICKETS_DIR / ticket_name
+        verif_path = VERIF_DIR / verif_name
+        if ticket_path.exists() or verif_path.exists():
+            raise AuditError("ticket allocator selected an occupied number; retry after resolving numbering drift", 1)
+        ticket_path.write_text(ticket_body, encoding="utf-8")
+        try:
+            verif_path.write_text(_verification_text(next_num, cat, sev, slug, status), encoding="utf-8")
+        except Exception:
+            ticket_path.unlink(missing_ok=True)
+            verif_path.unlink(missing_ok=True)
+            raise
+
+    result = {
+        "ok": True,
+        "num": f"{next_num:03d}",
+        "status": status,
+        "ticket": _rel(ticket_path),
+        "verification": _rel(verif_path),
+    }
+    if args.json:
+        _json_print(result)
+    else:
+        print(f"Created ticket:       {_rel(ticket_path)}")
+        print(f"Created verification: {_rel(verif_path)}")
+        print(f"Initial status:       {status}")
+    return result
+
+
+def _status_matches(ver_status: str, filters: Optional[Sequence[str]]) -> bool:
+    if not filters:
+        return True
+    wanted = {s.upper() for s in filters}
+    if ver_status in wanted:
+        return True
+    return "UNVERIFIED" in wanted and ver_status == "UNVERIFIED"
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    rows = []
+    for r in load_records():
+        if not _status_matches(r.get("status", ""), args.status):
+            continue
+        if args.category and r.get("category") != args.category.upper():
+            continue
+        if args.severity and str(r.get("severity", "")).lower() != args.severity.lower():
+            continue
+        if args.unverified and r.get("status") not in {"UNVERIFIED", "DRAFT", "OPEN"}:
+            continue
+        rows.append(r)
+    if args.json:
+        _json_print(rows)
+        return
+    if not rows:
+        print("No tickets match.")
+        return
+    print(f"{'#':<4}  {'Category':<14}  {'Severity':<8}  {'Status':<22}  {'P':<3}  Title")
+    print("-" * 90)
+    for r in rows:
+        print(
+            f"{r.get('id', '???'):<4}  {r.get('category', '?'):<14}  {r.get('severity', '?'):<8}  "
+            f"{r.get('status', '?'):<22}  {r.get('p_level', ''):<3}  {str(r.get('title', ''))[:45]}"
+        )
+    print(f"\n{len(rows)} tickets")
+
+
+def cmd_summary(args: argparse.Namespace) -> None:
+    counts = Counter(r.get("status", "UNKNOWN") for r in load_records())
+    total = sum(counts.values())
+    if args.json:
+        _json_print({"total": total, "counts": dict(sorted(counts.items()))})
+        return
+    if total == 0:
+        print("No tickets found.")
+        return
+    print(f"Tickets: {total} | " + " | ".join(f"{k}: {v}" for k, v in sorted(counts.items())))
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    results: dict[str, Any] = {}
+    exit_failed = False
+    for raw in args.id:
+        try:
+            num = int(raw)
+        except ValueError:
+            results[raw] = {"error": "invalid id"}
+            exit_failed = True
+            continue
+        path = _verif_for(num)
+        if path is None:
+            results[f"{num:03d}"] = {"status": "NO FILE"}
+            exit_failed = True
+        else:
+            v = parse_verification(path)
+            results[f"{num:03d}"] = {"status": v["status"], "path": _rel(path)}
+    if args.json:
+        _json_print(results)
+    else:
+        for tid, data in results.items():
+            if "error" in data:
+                print(f"{tid}: {data['error']}")
+            else:
+                print(f"{tid}: {data['status']:<22} {data.get('path', '')}")
+    if exit_failed:
+        sys.exit(1)
+
+
+def cmd_show(args: argparse.Namespace) -> None:
+    if not args.id:
+        raise AuditError("Usage: audit show <ticket_id>...", 2)
+    found_any = False
+    first = True
+    for raw in args.id:
+        try:
+            num = int(raw)
+        except ValueError:
+            print(f"{raw}: invalid id", file=sys.stderr)
+            continue
+        ticket_path = _ticket_for(num)
+        verif_path = _verif_for(num, ticket_path)
+        if not ticket_path and not verif_path:
+            print(f"{num:03d}: ticket not found", file=sys.stderr)
+            continue
+        found_any = True
+        sep = "─" * 70
+        if not first:
+            print("\n" + sep + "\n")
+        first = False
+        print(sep)
+        if ticket_path:
+            print(f"TICKET: {ticket_path.name}")
+            print(sep)
+            print(ticket_path.read_text(encoding="utf-8", errors="replace").rstrip())
+        else:
+            print(f"{num:03d}: no ticket file found")
+        if verif_path:
+            print("\n" + f"VERIFICATION: {verif_path.name}")
+            print(sep)
+            print(verif_path.read_text(encoding="utf-8", errors="replace").rstrip())
+        else:
+            print(f"{num:03d}: no verification file found")
+        print()
+    if not found_any:
+        sys.exit(1)
+
+
+def _apply_transition_to_file(
+    *,
+    num: int,
+    target_status: str,
+    actor: str,
+    fix_commit: Optional[str] = None,
+    verified_commit: Optional[str] = None,
+    verdict: Optional[str] = None,
+    evidence: Sequence[str] = (),
+    test: Optional[str] = None,
+    changed: Sequence[str] = (),
+    criteria: Sequence[str] = (),
+    reason: Optional[str] = None,
+) -> ItemResult:
+    ticket_path = _ticket_for(num)
+    path = _verif_for(num, ticket_path)
+    tid = f"{num:03d}"
+    if path is None:
+        return ItemResult(id=tid, ok=False, error="verification file not found")
+    text = path.read_text(encoding="utf-8", errors="replace")
+    current = (parse_verification(path)["status"] or "UNVERIFIED").upper()
+    try:
+        _require_actor(actor, target_status)
+        _validate_transition(current, target_status)
+        _validate_transition_requirements(
+            target_status,
+            ticket_path,
+            text,
+            fix_commit=fix_commit,
+            verified_commit=verified_commit,
+            verdict=verdict,
+            evidence=evidence,
+            test=test,
+            criteria=criteria,
+            reason=reason,
+        )
+    except AuditError as exc:
+        return ItemResult(id=tid, ok=False, path=_rel(path), status=current, error=exc.message)
+
+    today = date.today().isoformat()
+    new = _replace_field(text, "Verification Status", target_status)
+    new = _replace_field(new, "Status", target_status)
+
+    if target_status == "READY_FOR_VERIFICATION":
+        new = _ensure_field_after(new, "Verification Status", "Resolved Date", today)
+        new = _ensure_field_after(new, "Resolved Date", "Resolved By", actor)
+        if fix_commit:
+            new = _replace_field(new, "Fix Commit", fix_commit)
+        if evidence:
+            new = _append_to_section(new, "## Resolution Evidence", "\n".join(f"- {x}" for x in evidence))
+        if changed:
+            new = _append_to_section(new, "## Current State", "**File(s) Changed:**\n" + "\n".join(f"- `{x}`" for x in changed))
+        if test:
+            new = _append_to_section(new, "## Test Verification", test)
+        if verdict:
+            new = _replace_section(new, "## Verdict", f"**READY_FOR_VERIFICATION**\n\n{verdict}")
+    elif target_status in VERIFICATION_STATUSES:
+        if target_status in {"PASS", "PARTIAL", "FAIL", "REGRESS", "INVALID"}:
+            new = _replace_field(new, "Verified Date", today)
+            new = _replace_field(new, "Date", today)
+            new = _replace_field(new, "Verified By", actor)
+        if verified_commit:
+            new = _replace_field(new, "Verified Commit", verified_commit)
+            if re.search(r"^\*\*Commit Verified At:\*\*", new, flags=re.MULTILINE):
+                new = _replace_field(new, "Commit Verified At", verified_commit)
+        if evidence:
+            new = _append_to_section(new, "## Evidence", "\n".join(f"- {x}" for x in evidence))
+        if criteria:
+            lines = []
+            for raw in criteria:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                if re.search(r"\bpass\b", raw, flags=re.IGNORECASE):
+                    lines.append(f"- [x] {raw}")
+                else:
+                    lines.append(f"- [x] {raw}")
+            if lines:
+                new = _append_to_section(new, "## Criteria Results", "\n".join(lines))
+        if test:
+            new = _append_to_section(new, "## Test Verification", test)
+        if reason and not verdict:
+            verdict = reason
+        if verdict:
+            new = _replace_section(new, "## Verdict", f"**{target_status}**\n\n{verdict}")
+    elif target_status == "OPEN":
+        # OPEN means accepted, evidence-ready ticket. Verification remains unverified.
+        new = _replace_field(new, "Verified Date", "")
+        new = _replace_field(new, "Verified By", "")
+        if verdict:
+            new = _replace_section(new, "## Verdict", f"**OPEN**\n\n{verdict}")
+
+    commit_value = verified_commit or fix_commit or ""
+    new = _append_history(new, target_status, commit_value, actor, verdict or reason or "")
+    path.write_text(new, encoding="utf-8")
+    return ItemResult(id=tid, ok=True, message=f"updated → {target_status}", path=_rel(path), status=target_status)
+
+
+def _batch_transition(
+    ids: Sequence[str],
+    target_status: str,
+    actor: str,
+    *,
+    fix_commit: Optional[str] = None,
+    verified_commit: Optional[str] = None,
+    verdict: Optional[str] = None,
+    evidence: Sequence[str] = (),
+    test: Optional[str] = None,
+    changed: Sequence[str] = (),
+    criteria: Sequence[str] = (),
+    reason: Optional[str] = None,
+    auto_commit: bool = False,
+    allow_dirty: bool = False,
+    commit_message: Optional[str] = None,
+) -> BatchResult:
+    status = target_status.upper()
+    if status not in VALID_STATUSES:
+        raise AuditError(f"invalid status '{target_status}'. Valid: {', '.join(sorted(VALID_STATUSES))}", 2)
+    _require_actor(actor, status)
+    if auto_commit:
+        _ensure_clean_worktree(allow_dirty=allow_dirty)
+
+    result = BatchResult(ok=True, status=status)
+    changed_paths: list[Path] = []
+    with _create_lock_cm():
+        for raw in ids:
+            try:
+                num = int(raw)
+            except ValueError:
+                item = ItemResult(id=raw, ok=False, error="invalid id")
+                result.failed.append(item)
+                continue
+            item = _apply_transition_to_file(
+                num=num,
+                target_status=status,
+                actor=actor,
+                fix_commit=fix_commit,
+                verified_commit=verified_commit,
+                verdict=verdict,
+                evidence=evidence,
+                test=test,
+                changed=changed,
+                criteria=criteria,
+                reason=reason,
+            )
+            if item.ok:
+                result.updated.append(item)
+                if item.path:
+                    changed_paths.append(ROOT / item.path)
+            else:
+                result.failed.append(item)
+    result.ok = not result.failed
+    if auto_commit and changed_paths and not result.failed:
+        sha = _git_commit(changed_paths, commit_message or f"docs: audit {status.lower()} {' '.join(ids)}", allow_dirty=allow_dirty)
+        for item in result.updated:
+            item.message += f"; committed {sha}"
+    return result
+
+
+def _render_batch_result(result: BatchResult, as_json: bool, verb: str) -> None:
+    if as_json:
+        _json_print(result.to_json())
+        return
+    for item in result.updated:
+        print(f"{item.id}: {verb} → {item.status}  ({item.path})")
+    for item in result.failed:
+        print(f"{item.id}: ERROR — {item.error}", file=sys.stderr)
+
+
+def cmd_update(args: argparse.Namespace) -> None:
+    result = _batch_transition(
+        args.id,
+        args.status,
+        args.actor,
+        fix_commit=args.fix_commit,
+        verified_commit=getattr(args, "verified_commit", None),
+        verdict=args.verdict,
+        evidence=args.evidence or [],
+        test=args.test,
+        changed=args.changed or [],
+        criteria=args.criterion or [],
+        auto_commit=args.git_commit,
+        allow_dirty=args.allow_dirty,
+    )
+    _render_batch_result(result, args.json, "updated")
+    sys.exit(result.exit_code())
+
+
+def cmd_open(args: argparse.Namespace) -> None:
+    result = _batch_transition(args.id, "OPEN", args.actor, verdict=args.verdict, auto_commit=args.git_commit, allow_dirty=args.allow_dirty)
+    _render_batch_result(result, args.json, "opened")
+    sys.exit(result.exit_code())
+
+
+def cmd_resolve(args: argparse.Namespace) -> None:
+    result = _batch_transition(
+        args.id,
+        "READY_FOR_VERIFICATION",
+        args.actor,
+        fix_commit=args.fix_commit,
+        verdict=args.verdict or "Implementation complete; awaiting independent verification",
+        evidence=args.evidence or [],
+        test=args.test,
+        changed=args.changed or [],
+        auto_commit=args.git_commit,
+        allow_dirty=args.allow_dirty,
+        commit_message=f"docs: audit resolve {' '.join(args.id)}",
+    )
+    _render_batch_result(result, args.json, "resolved")
+    sys.exit(result.exit_code())
+
+
+def cmd_verify(args: argparse.Namespace) -> None:
+    status = args.status.upper()
+    if status not in VERIFICATION_STATUSES:
+        raise AuditError(f"'{args.status}' is not a verification status. Valid: {', '.join(sorted(VERIFICATION_STATUSES))}", 2)
+    result = _batch_transition(
+        args.id,
+        status,
+        args.actor,
+        verified_commit=args.verified_commit,
+        verdict=args.verdict,
+        evidence=args.evidence or [],
+        test=args.test,
+        criteria=args.criterion or [],
+        reason=args.reason,
+        auto_commit=args.git_commit,
+        allow_dirty=args.allow_dirty,
+        commit_message=f"docs: audit verify {' '.join(args.id)} → {status}",
+    )
+    _render_batch_result(result, args.json, "verified")
+    sys.exit(result.exit_code())
+
+
+def cmd_close(args: argparse.Namespace) -> None:
+    result = _batch_transition(args.id, "INVALID", args.actor, verdict=f"INVALID: {args.reason}", reason=args.reason)
+    _render_batch_result(result, False, "closed")
+    sys.exit(result.exit_code())
+
+
+def cmd_wontfix(args: argparse.Namespace) -> None:
+    result = _batch_transition(args.id, "WONTFIX", args.actor, verdict=f"WONTFIX: {args.reason}", reason=args.reason)
+    _render_batch_result(result, False, "wontfix")
+    sys.exit(result.exit_code())
+
+
+def cmd_reopen(args: argparse.Namespace) -> None:
+    result = _batch_transition(args.id, "OPEN", args.actor, verdict=args.reason or "Reopened")
+    _render_batch_result(result, False, "reopened")
+    sys.exit(result.exit_code())
+
+
+def _is_blocked(record: dict[str, Any], status_by_id: dict[str, str]) -> bool:
+    for dep in record.get("depends_on", []):
+        if status_by_id.get(dep) not in _PASS_LIKE:
+            return True
+    return False
+
+
+def _int_or_default(value: Any, default: int) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def cmd_next(args: argparse.Namespace) -> None:
+    records = load_records()
+    status_by_id = {r["id"]: r.get("status", "") for r in records}
+    if args.for_role == "resolution":
+        allowed = {"OPEN", "PARTIAL", "FAIL", "REGRESS", "BLOCKED"}
+    elif args.for_role == "verification":
+        allowed = {"READY_FOR_VERIFICATION"}
+    else:
+        raise AuditError(f"unknown --for '{args.for_role}'. Use: resolution, verification", 2)
+
+    candidates = []
+    blocked_skipped = 0
+    for r in records:
+        status = r.get("status")
+        if status not in allowed:
+            continue
+        if args.category and r.get("category") != args.category.upper():
+            continue
+        if args.severity and str(r.get("severity", "")).lower() != args.severity.lower():
+            continue
+        blocked = _is_blocked(r, status_by_id)
+        if blocked and args.for_role == "resolution":
+            blocked_skipped += 1
+            continue
+        candidates.append(r)
+
+    if not candidates:
+        payload = {"ok": True, "for": args.for_role, "ticket": None, "blocked_skipped": blocked_skipped}
+        if getattr(args, "json", False):
+            _json_print(payload)
+        else:
+            suffix = f" ({blocked_skipped} blocked by dependencies)" if blocked_skipped else ""
+            print(f"No tickets available for {args.for_role}.{suffix}")
+        return
+
+    def sort_key(r: dict[str, Any]) -> tuple[int, int, int, int, int]:
+        decision_penalty = 0 if r.get("decision", "FIX") == "FIX" else 1
+        plevel = _PLEVEL_ORDER.get(str(r.get("p_level", "")).upper(), 4)
+        score = -_int_or_default(r.get("priority"), 0)
+        sev = _SEVERITY_ORDER.get(str(r.get("severity", "?")).lower(), 4)
+        num = _int_or_default(r.get("num"), 999999)
+        return (decision_penalty, plevel, score, sev, num)
+
+    candidates.sort(key=sort_key)
+    top = candidates[0]
+    if getattr(args, "json", False):
+        _json_print({
+            "ok": True,
+            "for": args.for_role,
+            "ticket": top,
+            "queue_size": len(candidates),
+            "blocked_skipped": blocked_skipped,
+        })
+        return
+    print(
+        f"{top['id']}  [{top.get('severity', '?')}] [{top.get('status', '?')}] "
+        f"[{top.get('p_level', '') or 'P?'} score={top.get('priority', '') or '?'}] {top.get('title', '')}"
+    )
+    if top.get("depends_on"):
+        print(f"Depends on: {', '.join(top['depends_on'])}")
+    if len(candidates) > 1:
+        print(f"({len(candidates) - 1} more ticket(s) in queue)")
+
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    issues: list[str] = []
+    warnings: list[str] = []
+    if not TICKETS_DIR.is_dir() or not VERIF_DIR.is_dir():
+        if args.fix:
+            result = _initialize_audit_tree(write_docs=True)
+            if result["created_dirs"] or result["created_files"]:
+                print("FIXED: initialized missing audit workflow directories/files")
+        else:
+            issues.append("Audit workflow is not initialized. Run: audit init")
+
+    ticket_paths = list(_all_ticket_files())
+    verif_paths = list(_named_verif_files())
+    ticket_by_num: dict[int, Path] = {}
+    verif_by_num: dict[int, Path] = {}
+
+    for p in ticket_paths:
+        num = _ticket_num(p.name)
+        if num is not None:
+            if num in ticket_by_num:
+                issues.append(f"Duplicate ticket number {num:03d}: {p.name} and {ticket_by_num[num].name}")
+            else:
+                ticket_by_num[num] = p
+
+    for p in verif_paths:
+        num = _ticket_num(p.name)
+        if num is not None:
+            if num in verif_by_num:
+                issues.append(f"Duplicate verification number {num:03d}: {p.name} and {verif_by_num[num].name}")
+            else:
+                verif_by_num[num] = p
+
+    for num, p in ticket_by_num.items():
+        if num not in verif_by_num:
+            issues.append(f"Ticket {num:03d} missing verification file: {p.name}")
+            if args.fix:
+                VERIF_DIR.mkdir(parents=True, exist_ok=True)
+                _write_stub_verification(VERIF_DIR / p.name, num, p)
+                print(f"FIXED: created verification stub for {num:03d}")
+        elif verif_by_num[num].name != p.name:
+            issues.append(f"Ticket/verification name mismatch {num:03d}: {p.name} vs {verif_by_num[num].name}")
+
+    for num, p in verif_by_num.items():
+        if num not in ticket_by_num:
+            issues.append(f"Orphan verification file {num:03d}: {p.name}")
+
+    for p in ticket_paths:
+        t = parse_ticket(p)
+        if t["category"] not in VALID_CATEGORIES and t["category"] != "?":
+            issues.append(f"Invalid category in {p.name}: {t['category']}")
+        if t["severity"] not in VALID_SEVERITIES and t["severity"] != "?":
+            issues.append(f"Invalid severity in {p.name}: {t['severity']}")
+
+    for p in verif_paths:
+        v = parse_verification(p)
+        status = v["status"]
+        if status not in VALID_STATUSES and status not in {"?", "UNKNOWN", ""}:
+            issues.append(f"Invalid status in {p.name}: {status}")
+        ticket_path = ticket_by_num.get(v["num"])
+        if ticket_path:
+            ttext = ticket_path.read_text(encoding="utf-8", errors="replace")
+            if status != "DRAFT":
+                ready, missing = _ticket_ready_for_open(ttext)
+                if not ready:
+                    issues.append(f"{status} ticket {p.name} has non-ready ticket content: {', '.join(missing)}")
+            else:
+                warnings.append(f"DRAFT ticket {p.name} is incomplete and excluded from resolution queue")
+
+        if status == "READY_FOR_VERIFICATION":
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if not v.get("commit"):
+                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty Fix Commit")
+            if not _has_nonplaceholder_content(text, "## Resolution Evidence") and not _has_nonplaceholder_content(text, "## Evidence"):
+                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty resolution evidence")
+            if not _has_nonplaceholder_content(text, "## Test Verification"):
+                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty test verification")
+        if status == "PASS":
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if ticket_path:
+                ok, missing = _pass_ready(ticket_path, text, [])
+                if not ok:
+                    issues.append(f"PASS ticket {p.name} lacks required evidence: {'; '.join(missing)}")
+            if not v.get("verified_commit"):
+                issues.append(f"PASS ticket {p.name} has empty Verified Commit")
+        if status in {"WONTFIX", "INVALID", "BLOCKED"}:
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if not _has_nonplaceholder_content(text, "## Verdict"):
+                issues.append(f"{status} ticket {p.name} lacks rationale in Verdict")
+
+    # Dependency checks.
+    records = load_records()
+    ids = {r["id"] for r in records}
+    status_by_id = {r["id"]: r.get("status", "") for r in records}
+    graph: dict[str, set[str]] = {r["id"]: set(r.get("depends_on", [])) for r in records}
+    for r in records:
+        for dep in r.get("depends_on", []):
+            if dep not in ids:
+                issues.append(f"Ticket {r['id']} depends on missing ticket {dep}")
+            elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "INVALID"}:
+                issues.append(f"Ticket {r['id']} depends on non-usable ticket {dep} ({status_by_id.get(dep)})")
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str, stack: list[str]) -> None:
+        if node in visiting:
+            cycle = " -> ".join(stack + [node])
+            issues.append(f"Dependency cycle detected: {cycle}")
+            return
+        if node in visited:
+            return
+        visiting.add(node)
+        for dep in graph.get(node, set()):
+            visit(dep, stack + [node])
+        visiting.remove(node)
+        visited.add(node)
+
+    for node in graph:
+        visit(node, [])
+
+    if issues:
+        print(f"Found {len(issues)} issue(s):")
+        for issue in issues:
+            print(f"  - {issue}")
+        if warnings:
+            print(f"\nWarnings ({len(warnings)}):")
+            for w in warnings:
+                print(f"  - {w}")
+        sys.exit(1)
+    print("Audit directory is healthy.")
+    if warnings:
+        print(f"Warnings ({len(warnings)}):")
+        for w in warnings:
+            print(f"  - {w}")
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    items = load_records()
+    if args.json:
+        _json_print(items)
+        return
+    if not items:
+        print("No tickets found.")
+        return
+    print(f"{'ID':<6} {'Category':<14} {'Severity':<8} {'Status':<22} {'P':<3} Title")
+    print("-" * 90)
+    for it in items:
+        print(
+            f"{it.get('id', '???'):<6} {it.get('category', '?'):<14} {it.get('severity', '?'):<8} "
+            f"{it.get('status', '?'):<22} {it.get('p_level', ''):<3} {str(it.get('title', ''))[:40]}"
+        )
+
+
+def _first_evidence_line(text: str) -> str:
+    content = _section_content(text, "## Evidence")
+    for line in content.splitlines():
+        line = _PLACEHOLDER_RE.sub("", line).strip()
+        if line:
+            return line
+    return ""
+
+
+def _title_similarity(a: str, b: str) -> float:
+    words_a = set(re.sub(r"[^\w\s]", "", a.lower()).split())
+    words_b = set(re.sub(r"[^\w\s]", "", b.lower()).split())
+    if not words_a or not words_b:
+        return 0.0
+    return len(words_a & words_b) / len(words_a | words_b)
+
+
+def cmd_dedupe(args: argparse.Namespace) -> None:
+    ticket_paths = list(_all_ticket_files())
+    if len(ticket_paths) < 2:
+        print("Need at least 2 tickets to dedupe.")
+        return
+    tickets = []
+    for path in ticket_paths:
+        t = parse_ticket(path)
+        t["_evidence_first"] = _first_evidence_line(t["_text"])
+        tickets.append(t)
+    candidates = []
+    for i, a in enumerate(tickets):
+        for b in tickets[i + 1:]:
+            if a["num"] is None or b["num"] is None:
+                continue
+            if a["category"] != b["category"] or a["module"] != b["module"]:
+                continue
+            title_sim = _title_similarity(a["title"], b["title"])
+            evidence_match = a["_evidence_first"] and a["_evidence_first"] == b["_evidence_first"]
+            score = min(1.0, title_sim + (0.3 if evidence_match else 0.0))
+            if score >= 0.5:
+                target = min(a["num"], b["num"])
+                other = max(a["num"], b["num"])
+                candidates.append({
+                    "a_num": a["num"], "b_num": b["num"], "score": score,
+                    "reason": "same module, same evidence" if evidence_match else "same module, similar title",
+                    "recommendation": f"merge into {target:03d}", "other": other, "target": target,
+                })
+    if not candidates:
+        print("No duplicate candidates found.")
+        return
+    candidates.sort(key=lambda c: -c["score"])
+    if args.apply:
+        if not args.actor:
+            raise AuditError("--as is required when --apply modifies ticket status", 2)
+        for c in candidates:
+            result = _batch_transition([str(c["other"])], "INVALID", args.actor, verdict=f"DUPLICATE: similar to {c['target']:03d}", reason="duplicate")
+            if result.failed:
+                for item in result.failed:
+                    print(f"{item.id}: ERROR — {item.error}", file=sys.stderr)
+                sys.exit(result.exit_code())
+        print(f"Marked {len(candidates)} ticket(s) as INVALID (duplicate).")
+    else:
+        print("| Candidate | Similar To | Score | Reason | Recommendation |")
+        print("|---|---|---|---|---|")
+        for c in candidates:
+            print(f"| {c['a_num']:03d} | {c['b_num']:03d} | {c['score']:.2f} | {md_cell(c['reason'])} | {md_cell(c['recommendation'])} |")
+        print(f"\n{len(candidates)} candidate(s). Use --apply --as audit-verification to mark duplicates as INVALID.")
+
+
+def cmd_baseline(args: argparse.Namespace) -> None:
+    baselines_dir = ROOT / "audit" / "baselines"
+    baselines_dir.mkdir(parents=True, exist_ok=True)
+
+    def snapshot() -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for r in load_records():
+            if r.get("num") is None:
+                continue
+            out[r["id"]] = {
+                "status": r.get("status", "UNVERIFIED"),
+                "category": r.get("category", "?"),
+                "severity": r.get("severity", "?"),
+                "title": r.get("title", ""),
+                "module": r.get("module", ""),
+                "depends_on": r.get("depends_on", []),
+                "blocks": r.get("blocks", []),
+                "priority": r.get("priority", ""),
+                "p_level": r.get("p_level", ""),
+                "ticket_hash": r.get("ticket_hash", ""),
+                "verification_hash": r.get("verification_hash", ""),
+            }
+        return out
+
+    if args.action == "create":
+        snap = snapshot()
+        name = args.tag or datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        path = baselines_dir / f"{name}.json"
+        path.write_text(json.dumps({"created_at": datetime.now().isoformat(), "tickets": snap}, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Baseline saved: {_rel(path)}")
+        print(f"Tickets: {len(snap)}")
+        return
+
+    if args.tag:
+        baseline_path = baselines_dir / f"{args.tag}.json"
+    else:
+        baselines = sorted(baselines_dir.glob("*.json"))
+        if not baselines:
+            raise AuditError("No baselines found. Run 'audit baseline create' first.", 1)
+        baseline_path = baselines[-1]
+    if not baseline_path.exists():
+        raise AuditError(f"Baseline not found: {baseline_path}", 1)
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    old = baseline.get("tickets", {})
+    current = snapshot()
+    new_ids = set(current) - set(old)
+    removed_ids = set(old) - set(current)
+    changed_status = []
+    changed_content = []
+    changed_semantic = []
+    for tid in sorted(set(current) & set(old)):
+        o = old[tid]
+        n = current[tid]
+        if o.get("status") != n.get("status"):
+            changed_status.append({"id": tid, "from": o.get("status"), "to": n.get("status")})
+        if o.get("ticket_hash") != n.get("ticket_hash") or o.get("verification_hash") != n.get("verification_hash"):
+            changed_content.append(tid)
+        for key in ("severity", "category", "module", "priority", "p_level", "depends_on", "blocks"):
+            if o.get(key) != n.get(key):
+                changed_semantic.append({"id": tid, "field": key, "from": o.get(key), "to": n.get(key)})
+    print(f"Baseline: {baseline_path.name} ({baseline.get('created_at', 'unknown')})\n")
+    print("| Metric | Count |")
+    print("|---|---|")
+    print(f"| New tickets | {len(new_ids)} |")
+    print(f"| Removed tickets | {len(removed_ids)} |")
+    print(f"| Changed status | {len(changed_status)} |")
+    print(f"| Changed content hash | {len(changed_content)} |")
+    print(f"| Changed semantic fields | {len(changed_semantic)} |")
+    if new_ids:
+        print(f"\n**New:** {', '.join(sorted(new_ids))}")
+    if removed_ids:
+        print(f"**Removed:** {', '.join(sorted(removed_ids))}")
+    if changed_status:
+        print("\n**Changed status:**")
+        for c in changed_status:
+            print(f"  {c['id']}: {c['from']} → {c['to']}")
+    if changed_content:
+        print(f"\n**Changed content:** {', '.join(sorted(changed_content))}")
+    if changed_semantic:
+        print("\n**Changed semantic fields:**")
+        for c in changed_semantic:
+            print(f"  {c['id']} {c['field']}: {c['from']} → {c['to']}")
+
+
+def cmd_triage_set(args: argparse.Namespace) -> None:
+    num = _parse_id(args.id)
+    path = _ticket_for(num)
+    if not path:
+        raise AuditError(f"ticket {num:03d} not found", 1)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if args.impact is not None:
+        text = _replace_field(text, "Impact", str(args.impact))
+    if args.effort is not None:
+        text = _replace_field(text, "Effort", str(args.effort))
+    if args.impact is not None and args.effort is not None:
+        priority = args.impact * (6 - args.effort)
+        text = _replace_field(text, "Priority", str(priority))
+        plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
+        text = _replace_field(text, "P-level", plevel)
+    if args.p_level:
+        text = _replace_field(text, "P-level", args.p_level.upper())
+    if args.decision:
+        text = _replace_field(text, "Decision", args.decision.upper())
+    if args.phase:
+        text = _replace_field(text, "Phase", args.phase)
+    path.write_text(text, encoding="utf-8")
+    print(f"{num:03d}: triage metadata updated ({_rel(path)})")
+
+
+def cmd_deps_add(args: argparse.Namespace) -> None:
+    num = _parse_id(args.id)
+    path = _ticket_for(num)
+    if not path:
+        raise AuditError(f"ticket {num:03d} not found", 1)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    depends = set(_split_ids(_field(text, "Depends On")))
+    blocks = set(_split_ids(_field(text, "Blocks")))
+    depends.update(x.zfill(3) for x in (args.depends_on or []))
+    blocks.update(x.zfill(3) for x in (args.blocks or []))
+    text = _replace_field(text, "Depends On", _join_ids(sorted(depends)))
+    text = _replace_field(text, "Blocks", _join_ids(sorted(blocks)))
+    path.write_text(text, encoding="utf-8")
+    print(f"{num:03d}: dependencies updated ({_rel(path)})")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI dispatch
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="audit", description="Project-agnostic audit ticket workflow manager.")
+    parser.add_argument("--root", help="Project root directory (default: cwd or AUDIT_ROOT)")
+    sub = parser.add_subparsers(dest="command", help="Available commands")
+
+    init = sub.add_parser("init", help="Initialize audit workflow directories and onboarding docs")
+    init.add_argument("--json", action="store_true", help="Output JSON only")
+    init.add_argument("--no-docs", action="store_true", help="Create directories only; skip README/dependency stubs")
+
+    create = sub.add_parser("create", help="Create a ticket; incomplete tickets are DRAFT")
+    create.add_argument("category", help="Ticket category")
+    create.add_argument("--title", required=True, help="Ticket title")
+    create.add_argument("--severity", required=True, help="Ticket severity")
+    create.add_argument("--module", default="?", help="Affected module")
+    create.add_argument("--lines", default="N/A", help="Affected line range")
+    create.add_argument("--source", help="Evidence source")
+    create.add_argument("--depends-on", action="append", help="Dependency ticket ID; repeatable")
+    create.add_argument("--blocks", action="append", help="Blocked ticket ID; repeatable")
+    create.add_argument("--description", help="Problem description")
+    create.add_argument("--expected", help="Expected behavior")
+    create.add_argument("--actual", help="Actual behavior")
+    create.add_argument("--evidence", action="append", help="Concrete evidence; repeatable")
+    create.add_argument("--recommendation", help="Recommended fix")
+    create.add_argument("--acceptance-criterion", action="append", help="Acceptance criterion; repeatable")
+    create.add_argument("--suggested-verification", help="Suggested independent verification")
+    create.add_argument("--open", action="store_true", help="Fail unless ticket has enough content to start as OPEN")
+    create.add_argument("--json", action="store_true", help="Output JSON only")
+
+    list_p = sub.add_parser("list", help="List tickets")
+    list_p.add_argument("--status", action="append", help="Filter by status; repeatable")
+    list_p.add_argument("--category", help="Filter by category")
+    list_p.add_argument("--severity", help="Filter by severity")
+    list_p.add_argument("--unverified", action="store_true", help="Show DRAFT/OPEN/UNVERIFIED tickets")
+    list_p.add_argument("--json", action="store_true", help="Output JSON")
+
+    show = sub.add_parser("show", help="Show ticket + verification")
+    show.add_argument("id", nargs="+", help="Ticket ID(s)")
+
+    status = sub.add_parser("status", help="Show verification status")
+    status.add_argument("id", nargs="+", help="Ticket ID(s)")
+    status.add_argument("--json", action="store_true")
+
+    summary = sub.add_parser("summary", help="Show status summary")
+    summary.add_argument("--json", action="store_true")
+
+    def add_mutation_common(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--as", dest="actor", required=True, help="Actor role")
+        p.add_argument("--git-commit", action="store_true", help="Commit audit metadata changes")
+        p.add_argument("--allow-dirty", action="store_true", help="Allow git commit with dirty worktree")
+        p.add_argument("--json", action="store_true", help="Output JSON only")
+
+    update = sub.add_parser("update", help="Low-level status update with state/role enforcement")
+    update.add_argument("id", nargs="+", help="Ticket ID(s)")
+    update.add_argument("--status", required=True, help="New status")
+    update.add_argument("--fix-commit", help="Fix commit SHA")
+    update.add_argument("--verified-commit", help="Verified commit SHA")
+    update.add_argument("--verdict", help="Verdict text")
+    update.add_argument("--evidence", action="append", help="Evidence line; repeatable")
+    update.add_argument("--test", help="Test command/result")
+    update.add_argument("--changed", action="append", help="Changed file; repeatable")
+    update.add_argument("--criterion", action="append", help="Criterion result, e.g. 'AC1: pass - pytest ...'; repeatable")
+    add_mutation_common(update)
+
+    open_p = sub.add_parser("open", help="Promote DRAFT ticket(s) to OPEN after evidence is complete")
+    open_p.add_argument("id", nargs="+", help="Ticket ID(s)")
+    open_p.add_argument("--verdict", default="Ticket accepted for resolution", help="Audit note")
+    add_mutation_common(open_p)
+
+    resolve = sub.add_parser("resolve", help="Mark implementation complete and ready for independent verification")
+    resolve.add_argument("id", nargs="+", help="Ticket ID(s)")
+    resolve.add_argument("--fix-commit", required=True, help="Implementation commit SHA")
+    resolve.add_argument("--evidence", action="append", required=True, help="Resolution evidence; repeatable")
+    resolve.add_argument("--test", required=True, help="Test command/result")
+    resolve.add_argument("--changed", action="append", help="Changed file; repeatable")
+    resolve.add_argument("--verdict", help="One-line resolution note")
+    add_mutation_common(resolve)
+
+    verify = sub.add_parser("verify", help="Assign independent verification status")
+    verify.add_argument("id", nargs="+", help="Ticket ID(s)")
+    verify.add_argument("--status", required=True, help="Verification status")
+    verify.add_argument("--verified-commit", help="Commit SHA checked by verifier")
+    verify.add_argument("--verdict", help="Verdict text")
+    verify.add_argument("--reason", help="Rationale for WONTFIX/INVALID/BLOCKED")
+    verify.add_argument("--evidence", action="append", help="Verification evidence; repeatable")
+    verify.add_argument("--test", help="Test command/result")
+    verify.add_argument("--criterion", action="append", help="Criterion result, e.g. 'AC1: pass - pytest ...'; repeatable")
+    add_mutation_common(verify)
+
+    next_p = sub.add_parser("next", help="Find next ticket for resolution or verification")
+    next_p.add_argument("--for", dest="for_role", default="resolution", choices=["resolution", "verification"])
+    next_p.add_argument("--category")
+    next_p.add_argument("--severity")
+    next_p.add_argument("--json", action="store_true", help="Output selected ticket as JSON")
+
+    doctor = sub.add_parser("doctor", help="Check audit directory health")
+    doctor.add_argument("--fix", action="store_true", help="Auto-fix missing verification stubs")
+    doctor.add_argument("--strict", action="store_true", help="Accepted for compatibility; checks are strict by default for non-DRAFT states")
+
+    export = sub.add_parser("export", help="Export canonical ticket records")
+    export.add_argument("--json", action="store_true")
+
+    close = sub.add_parser("close", help="Close ticket(s) as INVALID")
+    close.add_argument("id", nargs="+")
+    close.add_argument("--reason", required=True)
+    close.add_argument("--as", dest="actor", required=True)
+
+    wontfix = sub.add_parser("wontfix", help="Mark ticket(s) as WONTFIX")
+    wontfix.add_argument("id", nargs="+")
+    wontfix.add_argument("--reason", required=True)
+    wontfix.add_argument("--as", dest="actor", required=True)
+
+    reopen = sub.add_parser("reopen", help="Reopen ticket(s) to OPEN")
+    reopen.add_argument("id", nargs="+")
+    reopen.add_argument("--reason")
+    reopen.add_argument("--as", dest="actor", required=True)
+
+    dedupe = sub.add_parser("dedupe", help="Detect duplicate tickets")
+    dedupe.add_argument("--apply", action="store_true", help="Mark duplicates as INVALID")
+    dedupe.add_argument("--as", dest="actor", default="", help="Required with --apply")
+
+    baseline = sub.add_parser("baseline", help="Create or compare audit baselines")
+    baseline.add_argument("action", choices=["create", "compare"])
+    baseline.add_argument("--tag")
+
+    triage = sub.add_parser("triage", help="Manage executable triage metadata")
+    triage_sub = triage.add_subparsers(dest="triage_command")
+    triage_set = triage_sub.add_parser("set", help="Set triage metadata on a ticket")
+    triage_set.add_argument("id")
+    triage_set.add_argument("--impact", type=int, choices=range(1, 6))
+    triage_set.add_argument("--effort", type=int, choices=range(1, 6))
+    triage_set.add_argument("--p-level", choices=["P0", "P1", "P2", "P3"])
+    triage_set.add_argument("--decision", choices=["FIX", "DEFER", "WONTFIX", "DUPLICATE"])
+    triage_set.add_argument("--phase")
+
+    deps = sub.add_parser("deps", help="Manage ticket dependencies")
+    deps_sub = deps.add_subparsers(dest="deps_command")
+    deps_add = deps_sub.add_parser("add", help="Add dependency edges to a ticket")
+    deps_add.add_argument("id")
+    deps_add.add_argument("--depends-on", action="append")
+    deps_add.add_argument("--blocks", action="append")
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        if args.command == "init":
+            cmd_init(args)
+        elif args.command == "create":
+            cmd_create(args)
+        elif args.command == "list":
+            cmd_list(args)
+        elif args.command == "show":
+            cmd_show(args)
+        elif args.command == "status":
+            cmd_status(args)
+        elif args.command == "summary":
+            cmd_summary(args)
+        elif args.command == "update":
+            cmd_update(args)
+        elif args.command == "open":
+            cmd_open(args)
+        elif args.command == "resolve":
+            cmd_resolve(args)
+        elif args.command == "verify":
+            cmd_verify(args)
+        elif args.command == "next":
+            cmd_next(args)
+        elif args.command == "doctor":
+            cmd_doctor(args)
+        elif args.command == "export":
+            cmd_export(args)
+        elif args.command == "close":
+            cmd_close(args)
+        elif args.command == "wontfix":
+            cmd_wontfix(args)
+        elif args.command == "reopen":
+            cmd_reopen(args)
+        elif args.command == "dedupe":
+            cmd_dedupe(args)
+        elif args.command == "baseline":
+            cmd_baseline(args)
+        elif args.command == "triage" and args.triage_command == "set":
+            cmd_triage_set(args)
+        elif args.command == "deps" and args.deps_command == "add":
+            cmd_deps_add(args)
+        else:
+            parser.print_help()
+            sys.exit(1)
+    except AuditError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        sys.exit(exc.code)
+
+
+if __name__ == "__main__":
+    main()

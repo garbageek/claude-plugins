@@ -1,0 +1,20 @@
+{
+  "name": "artur-plugins",
+  "owner": {
+    "name": "Artur Kulik",
+    "email": "arthur.kulik@icloud.com"
+  },
+  "metadata": {
+    "description": "Local Claude Code plugin marketplace for governed agent workflows.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "audit-workflow",
+      "source": "./plugins/audit-workflow",
+      "description": "Evidence-first governed audit workflow with discovery, triage, resolution, and independent verification.",
+      "version": "1.0.0",
+      "category": "development"
+    }
+  ]
+}
