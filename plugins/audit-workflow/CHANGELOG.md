@@ -10,6 +10,7 @@
 - Broadened the audit guard's shell rewrite detection for audit Markdown files, including indirect pipeline/write paths such as `cat | sed | mv` patterns.
 - Added `disallowedTools` to the `audit-resolution` agent so it matches the other lifecycle agents and records audit metadata only through the CLI/MCP runtime.
 - Documented that `audit-triage` is intentionally not a lifecycle actor; triage commands update scheduling and dependency metadata only.
+- Added `scripts/check_runtime_contract_parity.py` to detect drift between `scripts/audit_lib.py` and the single-file fallback constants embedded in `bin/audit`.
 - Listed `docs/references/runtime-diagnosis-patterns.md` as a maintained operational reference that must stay aligned with runtime behavior.
 
 ## 1.0.0
