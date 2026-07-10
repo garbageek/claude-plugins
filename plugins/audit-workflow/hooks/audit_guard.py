@@ -27,6 +27,14 @@ STATUS_RE = re.compile(rf"(?:Verification\s+Status|Status)\s*[:=].*(?:{LIFECYCLE
 MD_STATUS_RE = re.compile(rf"\*\*(?:Verification\s+Status|Status):\*\*\s*`?(?:{LIFECYCLE_STATUSES})`?", re.IGNORECASE)
 AUDIT_FILE_RE = re.compile(r"(?:^|[\s'\"])(?:\./)?audit/(?:tickets|verification|triage)/[^\s'\"]+\.md")
 DIRECT_MUTATOR_RE = re.compile(r"\b(?:sed|perl|python|python3|ruby|node|awk|ed)\b.*(?:Status|Verification\s+Status).*(?:" + LIFECYCLE_STATUSES + r")", re.IGNORECASE | re.DOTALL)
+INDIRECT_AUDIT_WRITE_RE = re.compile(
+    r"(?:"
+    r"\b(?:mv|cp|tee|install|rsync|dd|truncate)\b.*(?:\./)?audit/(?:tickets|verification|triage)/[^\s'\"]+\.md"
+    r"|>\s*(?:\./)?audit/(?:tickets|verification|triage)/[^\s'\"]+\.md"
+    r"|\|\s*(?:sed|perl|python|python3|ruby|node|awk|ed)\b.*\|.*\bmv\b"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
 ALLOWED_AUDIT_CMD_RE = re.compile(r"(^|[;&|\s])(?:python3?\s+[^;&|\n]*bin/audit|audit)\s+(?:verify|resolve|open|update|wontfix|close|reopen|triage|deps)\b", re.IGNORECASE)
 
 
@@ -109,6 +117,12 @@ def _contains_lifecycle_status(tool_input: dict) -> bool:
     return bool(STATUS_RE.search(text) or MD_STATUS_RE.search(text))
 
 
+def _bash_direct_audit_write(command: str) -> bool:
+    if not AUDIT_FILE_RE.search(command):
+        return False
+    return bool(DIRECT_MUTATOR_RE.search(command) or INDIRECT_AUDIT_WRITE_RE.search(command))
+
+
 def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
     audit = plugin_root() / "bin" / "audit"
     return subprocess.run(
@@ -128,10 +142,11 @@ def pre_tool_use(payload: dict) -> int:
         command = str(tin.get("command") or "")
         if ALLOWED_AUDIT_CMD_RE.search(command):
             return 0
-        if AUDIT_FILE_RE.search(command) and DIRECT_MUTATOR_RE.search(command):
+        if _bash_direct_audit_write(command):
             return _deny(
-                "Audit lifecycle statuses must be changed through the audit CLI/MCP runtime, not direct shell rewrites. "
-                "Use `audit resolve ... --as audit-resolution` or `audit verify ... --as audit-verification`."
+                "Audit markdown files must be changed through the audit CLI/MCP runtime, not shell rewrites. "
+                "Use `audit resolve ... --as audit-resolution`, `audit verify ... --as audit-verification`, "
+                "or the triage/dependency commands."
             )
         return 0
 
