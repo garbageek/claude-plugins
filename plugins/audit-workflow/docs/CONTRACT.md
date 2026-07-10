@@ -1,6 +1,6 @@
 # Audit Ticket Workflow Contract
 
-This document defines the canonical contracts shared by the four audit-ticket skills. All skills and scripts must conform to these rules.
+This document defines the canonical behavioral contract shared by the audit-ticket skills, agents, CLI, hooks, and MCP server. All operational references must derive from this file instead of duplicating status tables or lifecycle rules.
 
 ---
 
@@ -68,6 +68,8 @@ Every status-changing command must pass `--as <actor>`. Unknown or missing actor
 
 Core rule: `audit-resolution` must never write `PASS`.
 
+`audit-triage` is intentionally not a lifecycle actor. Triage commands may update scheduling and dependency metadata, but they must not gain lifecycle-status write permission by being added to the actor map for symmetry.
+
 ---
 
 ## 4. State Machine
@@ -87,6 +89,8 @@ A transition must satisfy both the current-state transition table and actor owne
 | `WONTFIX` | `OPEN` |
 | `INVALID` | `OPEN` |
 
+Runtime implementations must expose this exact matrix. The copyable single-file CLI mode and module-import mode must not diverge; changes to statuses, actors, transitions, or filename parsing require a parity update for both runtime paths in the same change.
+
 ---
 
 ## 5. Evidence Gates
@@ -101,6 +105,8 @@ A transition must satisfy both the current-state transition table and actor owne
 - `## Suggested Verification`
 
 Incomplete tickets stay `DRAFT` and are excluded from `audit next --for resolution`.
+
+Placeholder content includes HTML comments, `TODO`, and brace placeholders such as `{description}` or `{path/to/file.py}`.
 
 ### `OPEN → READY_FOR_VERIFICATION`
 
@@ -248,7 +254,17 @@ Equivalent ticket field:
 
 ---
 
-## 10. Machine-Readable Output
+## 10. Doctor Fix Semantics
+
+`audit doctor` reports the current audit workflow health.
+
+`audit doctor --fix` may create missing directories, onboarding files, or verification stubs. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
+
+A command may report both the fix attempt and the re-check, but the final issue count must represent the post-fix state.
+
+---
+
+## 11. Machine-Readable Output
 
 When `--json` is passed:
 
@@ -257,9 +273,13 @@ When `--json` is passed:
 - failed batch updates return non-zero exit status;
 - batch JSON contains per-ID `updated` and `failed` arrays.
 
+MCP tools must return structured JSON text in the MCP content envelope. If the wrapped CLI command emits human text, the MCP layer must normalize it into a JSON object and preserve the raw text in a named field such as `stdout_text`.
+
+MCP `audit_create` has an explicit cold-start side effect: it runs `audit init` before ticket creation. The tool result must expose both initialization and creation results, and must not continue to creation if initialization fails.
+
 ---
 
-## 11. Reporting Source of Truth
+## 12. Reporting Source of Truth
 
 The canonical source of truth is the normalized record produced by:
 
@@ -268,3 +288,5 @@ audit export --json
 ```
 
 Reports and baselines should derive from this model rather than re-parsing different subsets independently. Baselines include status, semantic metadata, and content hashes.
+
+`docs/references/runtime-diagnosis-patterns.md` is a maintained operational reference and must be updated when runtime diagnosis behavior changes.
