@@ -23,10 +23,19 @@ except Exception:  # pragma: no cover - defensive fallback for hook launch oddit
         return Path(payload.get("cwd") or os.getcwd()).resolve()
 
 LIFECYCLE_STATUSES = "PASS|PARTIAL|FAIL|READY_FOR_VERIFICATION|REGRESS|BLOCKED|WONTFIX|INVALID"
+AUDIT_MARKDOWN_PATH = r"(?:\./)?audit/(?:tickets|verification|triage)/[^\s'\";&|<>]+\.md"
 STATUS_RE = re.compile(rf"(?:Verification\s+Status|Status)\s*[:=].*(?:{LIFECYCLE_STATUSES})", re.IGNORECASE | re.DOTALL)
 MD_STATUS_RE = re.compile(rf"\*\*(?:Verification\s+Status|Status):\*\*\s*`?(?:{LIFECYCLE_STATUSES})`?", re.IGNORECASE)
-AUDIT_FILE_RE = re.compile(r"(?:^|[\s'\"])(?:\./)?audit/(?:tickets|verification|triage)/[^\s'\"]+\.md")
+AUDIT_FILE_RE = re.compile(rf"(?:^|[\s'\"<>=|&;]){AUDIT_MARKDOWN_PATH}")
+AUDIT_MARKDOWN_PATH_RE = re.compile(AUDIT_MARKDOWN_PATH, re.IGNORECASE)
 DIRECT_MUTATOR_RE = re.compile(r"\b(?:sed|perl|python|python3|ruby|node|awk|ed)\b.*(?:Status|Verification\s+Status).*(?:" + LIFECYCLE_STATUSES + r")", re.IGNORECASE | re.DOTALL)
+INDIRECT_AUDIT_WRITE_RE = re.compile(
+    rf"(?:"
+    rf"\b(?:mv|cp|tee|install|rsync|dd|truncate)\b[^\n;&|]*{AUDIT_MARKDOWN_PATH}"
+    rf"|(?:>|>>)\s*{AUDIT_MARKDOWN_PATH}"
+    rf")",
+    re.IGNORECASE | re.DOTALL,
+)
 ALLOWED_AUDIT_CMD_RE = re.compile(r"(^|[;&|\s])(?:python3?\s+[^;&|\n]*bin/audit|audit)\s+(?:verify|resolve|open|update|wontfix|close|reopen|triage|deps)\b", re.IGNORECASE)
 
 
@@ -101,12 +110,18 @@ def _touches_audit_file(tool_input: dict) -> bool:
     paths = _file_paths(tool_input)
     if any("/audit/" in p or p.startswith("audit/") or p.startswith("./audit/") for p in paths):
         return True
-    return bool(AUDIT_FILE_RE.search(_as_text(tool_input)))
+    return bool(AUDIT_MARKDOWN_PATH_RE.search(_as_text(tool_input)))
 
 
 def _contains_lifecycle_status(tool_input: dict) -> bool:
     text = _as_text(tool_input)
     return bool(STATUS_RE.search(text) or MD_STATUS_RE.search(text))
+
+
+def _bash_direct_audit_write(command: str) -> bool:
+    if not AUDIT_MARKDOWN_PATH_RE.search(command):
+        return False
+    return bool(DIRECT_MUTATOR_RE.search(command) or INDIRECT_AUDIT_WRITE_RE.search(command))
 
 
 def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -128,10 +143,11 @@ def pre_tool_use(payload: dict) -> int:
         command = str(tin.get("command") or "")
         if ALLOWED_AUDIT_CMD_RE.search(command):
             return 0
-        if AUDIT_FILE_RE.search(command) and DIRECT_MUTATOR_RE.search(command):
+        if _bash_direct_audit_write(command):
             return _deny(
-                "Audit lifecycle statuses must be changed through the audit CLI/MCP runtime, not direct shell rewrites. "
-                "Use `audit resolve ... --as audit-resolution` or `audit verify ... --as audit-verification`."
+                "Audit markdown files must be changed through the audit CLI/MCP runtime, not shell rewrites. "
+                "Use `audit resolve ... --as audit-resolution`, `audit verify ... --as audit-verification`, "
+                "or the triage/dependency commands."
             )
         return 0
 

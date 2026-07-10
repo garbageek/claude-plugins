@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,10 @@ def tool_result(data: Any, *, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
+def audit_tool_result(data: dict[str, Any]) -> dict[str, Any]:
+    return tool_result(data, is_error=not bool(data.get("ok", False)))
+
+
 def run_audit(args: dict[str, Any], *cmd: str, json_mode: bool = True) -> dict[str, Any]:
     root = default_root(args)
     argv = [str(audit_bin()), "--root", str(root), *cmd]
@@ -70,6 +75,88 @@ def run_audit(args: dict[str, Any], *cmd: str, json_mode: bool = True) -> dict[s
         "command": argv,
         "stdout": parsed,
         "stderr": stderr,
+    }
+
+
+def parse_doctor_output(stdout: Any, stderr: str = "") -> dict[str, Any]:
+    text = stdout if isinstance(stdout, str) else "" if stdout is None else json.dumps(stdout, ensure_ascii=False)
+    lines = text.splitlines()
+    fixed: list[str] = []
+    issues: list[str] = []
+    warnings: list[str] = []
+    section = ""
+    issue_count: int | None = None
+    warning_count: int | None = None
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("FIXED:"):
+            fixed.append(stripped.removeprefix("FIXED:").strip())
+            continue
+        m = re.match(r"Found\s+(\d+)\s+issue\(s\):", stripped)
+        if m:
+            issue_count = int(m.group(1))
+            section = "issues"
+            continue
+        m = re.match(r"Warnings\s+\((\d+)\):", stripped)
+        if m:
+            warning_count = int(m.group(1))
+            section = "warnings"
+            continue
+        if stripped.startswith("- "):
+            if section == "issues":
+                issues.append(stripped[2:].strip())
+            elif section == "warnings":
+                warnings.append(stripped[2:].strip())
+
+    return {
+        "healthy": "Audit directory is healthy." in text and issue_count in {None, 0},
+        "fixed": fixed,
+        "issues": issues,
+        "issue_count": len(issues) if issue_count is None else issue_count,
+        "warnings": warnings,
+        "warning_count": len(warnings) if warning_count is None else warning_count,
+        "stdout_text": text,
+        "stderr": stderr,
+    }
+
+
+def run_doctor(args: dict[str, Any], *, fix: bool = False, strict: bool = False) -> dict[str, Any]:
+    cmd = ["doctor"]
+    if fix:
+        cmd.append("--fix")
+    if strict:
+        cmd.append("--strict")
+
+    first = run_audit(args, *cmd, json_mode=False)
+    first_parsed = parse_doctor_output(first.get("stdout"), str(first.get("stderr") or ""))
+
+    if not fix:
+        return {
+            "ok": bool(first.get("ok")),
+            "returncode": first.get("returncode"),
+            "root": first.get("root"),
+            "command": first.get("command"),
+            "doctor": first_parsed,
+            "stderr": first.get("stderr", ""),
+        }
+
+    recheck_cmd = ["doctor"]
+    if strict:
+        recheck_cmd.append("--strict")
+    recheck = run_audit(args, *recheck_cmd, json_mode=False)
+    recheck_parsed = parse_doctor_output(recheck.get("stdout"), str(recheck.get("stderr") or ""))
+
+    return {
+        "ok": bool(recheck.get("ok")),
+        "returncode": recheck.get("returncode"),
+        "root": recheck.get("root"),
+        "command": first.get("command"),
+        "recheck_command": recheck.get("command"),
+        "rechecked_after_fix": True,
+        "fix_attempt": first_parsed,
+        "doctor": recheck_parsed,
+        "stderr": recheck.get("stderr", ""),
     }
 
 
@@ -102,7 +189,7 @@ def tools() -> list[dict[str, Any]]:
         },
         {
             "name": "audit_doctor",
-            "description": "Check audit workflow health.",
+            "description": "Check audit workflow health. With fix=true, apply supported fixes and return a fresh re-check result.",
             "inputSchema": {"type": "object", "properties": {**root_prop, "fix": {"type": "boolean"}, "strict": {"type": "boolean"}}, "additionalProperties": False},
         },
         {
@@ -117,7 +204,7 @@ def tools() -> list[dict[str, Any]]:
         },
         {
             "name": "audit_create",
-            "description": "Create a DRAFT/OPEN audit ticket from concrete evidence.",
+            "description": "Initialize the audit workflow when needed, then create a DRAFT/OPEN audit ticket from concrete evidence.",
             "inputSchema": {"type": "object", "properties": {**root_prop, "category": str_schema, "title": str_schema, "severity": str_schema, "module": str_schema, "description": str_schema, "evidence": {"type": "array", "items": str_schema}, "acceptance_criteria": {"type": "array", "items": str_schema}, "suggested_verification": str_schema, "open": {"type": "boolean"}}, "required": ["category", "title", "severity"], "additionalProperties": False},
         },
         {
@@ -140,25 +227,20 @@ def tools() -> list[dict[str, Any]]:
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "audit_init":
-        return tool_result(run_audit(args, "init"))
+        return audit_tool_result(run_audit(args, "init"))
     if name == "audit_doctor":
-        cmd = ["doctor"]
-        if args.get("fix"):
-            cmd.append("--fix")
-        if args.get("strict"):
-            cmd.append("--strict")
-        # doctor has no --json in current CLI; keep text but wrap it.
-        return tool_result(run_audit(args, *cmd, json_mode=False))
+        return audit_tool_result(run_doctor(args, fix=bool(args.get("fix")), strict=bool(args.get("strict"))))
     if name == "audit_summary":
-        return tool_result(run_audit(args, "summary"))
+        return audit_tool_result(run_audit(args, "summary"))
     if name == "audit_next":
         cmd = ["next", "--for", str(args.get("for_role") or "resolution")]
         optional_arg(cmd, "--category", args.get("category"))
         optional_arg(cmd, "--severity", args.get("severity"))
-        return tool_result(run_audit(args, *cmd))
+        return audit_tool_result(run_audit(args, *cmd))
     if name == "audit_create":
-        # Smooth cold-start: make sure the directory exists before creating.
-        run_audit(args, "init")
+        init_result = run_audit(args, "init")
+        if not init_result.get("ok"):
+            return audit_tool_result({"ok": False, "stage": "init", "init": init_result})
         cmd = ["create", str(args["category"]), "--title", str(args["title"]), "--severity", str(args["severity"])]
         optional_arg(cmd, "--module", args.get("module"))
         optional_arg(cmd, "--description", args.get("description"))
@@ -167,14 +249,20 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         optional_arg(cmd, "--suggested-verification", args.get("suggested_verification"))
         if args.get("open"):
             cmd.append("--open")
-        return tool_result(run_audit(args, *cmd))
+        create_result = run_audit(args, *cmd)
+        return audit_tool_result({
+            "ok": bool(init_result.get("ok")) and bool(create_result.get("ok")),
+            "root": create_result.get("root") or init_result.get("root"),
+            "initialized": init_result,
+            "created": create_result,
+        })
     if name == "audit_resolve":
         ids = arr(args.get("ids")) or arr(args.get("id"))
         cmd = ["resolve", *ids, "--fix-commit", str(args["fix_commit"]), "--test", str(args["test"]), "--as", "audit-resolution"]
         repeated_arg(cmd, "--evidence", args.get("evidence"))
         repeated_arg(cmd, "--changed", args.get("changed"))
         optional_arg(cmd, "--verdict", args.get("verdict"))
-        return tool_result(run_audit(args, *cmd))
+        return audit_tool_result(run_audit(args, *cmd))
     if name == "audit_verify":
         ids = arr(args.get("ids")) or arr(args.get("id"))
         cmd = ["verify", *ids, "--status", str(args["status"]), "--as", "audit-verification"]
@@ -184,9 +272,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         optional_arg(cmd, "--test", args.get("test"))
         optional_arg(cmd, "--verdict", args.get("verdict"))
         optional_arg(cmd, "--reason", args.get("reason"))
-        return tool_result(run_audit(args, *cmd))
+        return audit_tool_result(run_audit(args, *cmd))
     if name == "audit_export":
-        return tool_result(run_audit(args, "export"))
+        return audit_tool_result(run_audit(args, "export"))
     return tool_result({"ok": False, "error": f"unknown tool: {name}"}, is_error=True)
 
 
