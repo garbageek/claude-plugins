@@ -118,7 +118,7 @@ def validate_claude_marketplace():
     return validated
 
 
-def validate_openai_marketplace():
+def validate_openai_marketplace(claude_plugins):
     path = ROOT / ".agents/plugins/marketplace.json"
     marketplace = read_json(path)
     entries = marketplace.get("plugins")
@@ -133,6 +133,8 @@ def validate_openai_marketplace():
         plugin = (ROOT / source_path).resolve()
         require(plugin.is_relative_to(ROOT) and plugin.is_relative_to(PLUGINS_ROOT), f"{path}: {name}: source.path escapes plugins root")
         require(plugin.is_dir(), f"{path}: {name}: plugin path does not exist")
+        if name in claude_plugins:
+            require(plugin == claude_plugins[name], f"{path}: {name}: source differs from Claude marketplace")
         canonical = read_json(plugin / "plugin.json")
         require(canonical.get("name") == name, f"{path}: {name}: canonical plugin.json name mismatch")
         policy = entry.get("policy")
@@ -140,13 +142,15 @@ def validate_openai_marketplace():
         require(policy.get("installation") in {"AVAILABLE", "INSTALLED_BY_DEFAULT", "NOT_AVAILABLE"}, f"{path}: {name}: invalid installation policy")
         require(policy.get("authentication") in {"ON_INSTALL", "ON_FIRST_USE"}, f"{path}: {name}: invalid authentication policy")
         require(isinstance(entry.get("category"), str) and entry["category"].strip(), f"{path}: {name}: missing category")
+        interface = canonical.get("extensions", {}).get("com.openai", {}).get("interface", {})
+        require(entry["category"] == interface.get("category"), f"{path}: {name}: category differs from OpenAI plugin interface")
         validate_plugin(plugin, expected_name=name)
         print(f'OpenAI/Codex: {name} {canonical.get("version", "")}: marketplace entry valid')
 
 
 def main():
-    validate_claude_marketplace()
-    validate_openai_marketplace()
+    claude_plugins = validate_claude_marketplace()
+    validate_openai_marketplace(claude_plugins)
 
 
 if __name__ == "__main__":
