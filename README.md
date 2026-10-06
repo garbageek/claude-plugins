@@ -1,6 +1,6 @@
 # claude-plugins
 
-Local Claude Code plugin marketplace for governed agent workflows.
+Plugin marketplace for governed audit workflows and portable architecture skills.
 
 ## Install
 
@@ -9,6 +9,7 @@ From a clone of this repository:
 ```text
 /plugin marketplace add .
 /plugin install audit-workflow@artur-plugins
+/plugin install system-architect@artur-plugins
 /reload-plugins
 ```
 
@@ -19,6 +20,7 @@ git clone https://github.com/garbageek/claude-plugins
 cd claude-plugins
 /plugin marketplace add .
 /plugin install audit-workflow@artur-plugins
+/plugin install system-architect@artur-plugins
 /reload-plugins
 ```
 
@@ -37,16 +39,34 @@ Evidence-first audit workflow with:
 
 See [plugins/audit-workflow/README.md](plugins/audit-workflow/README.md).
 
+### system-architect
+
+Implementation-ready architecture SPECs, architecture reviews, and design decisions.
+Invoke `/system-architect:architect` in Claude Code.
+
+The complete portable package lives in `plugins/system-architect/`: canonical
+`plugin.json`, OpenAI/Codex compatibility metadata, Claude manifest, branding
+assets, and the architect skill with its templates and references. The imported
+0.9.6 package is preserved byte-for-byte. Both plugins use the documented Claude
+`displayName` field. Claude Code 2.1.141 rejects this field and does not support
+`plugin validate --strict`; its validation results do not establish compatibility
+with the current documented manifest schema.
+
 ## Validate
 
-The repository includes a GitHub Actions validator for JSON parsing, Python
-syntax, Markdown frontmatter shape, and default plugin layout checks.
+GitHub Actions validates every marketplace plugin: JSON/YAML, skill metadata,
+package links, manifest identity/version consistency, OpenAI interface parity,
+and referenced PNG icon dimensions and sizes. Existing audit runtime syntax
+and layout checks remain in place.
 
 Local validation:
 
 ```bash
-claude plugin validate --strict .
-claude plugin validate --strict plugins/audit-workflow
+claude plugin validate .
+claude plugin validate plugins/audit-workflow
+claude plugin validate plugins/system-architect
+python3 -m pip install PyYAML==6.0.3
+python3 scripts/validate_plugins.py
 python3 -m json.tool .claude-plugin/marketplace.json >/dev/null
 python3 -m json.tool plugins/audit-workflow/.claude-plugin/plugin.json >/dev/null
 python3 -m json.tool plugins/audit-workflow/.mcp.json >/dev/null

@@ -1,0 +1,17 @@
+{
+  "name": "system-architect",
+  "displayName": "System Architect",
+  "version": "0.9.6",
+  "description": "Turns software ideas and existing designs into lean, implementation-ready architecture SPECs, reviews, and design decisions.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "homepage": "https://mycmdline.com",
+  "keywords": [
+    "software-architecture",
+    "system-design",
+    "specifications",
+    "architecture-review"
+  ]
+}

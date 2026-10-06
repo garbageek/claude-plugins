@@ -17,12 +17,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Validate JSON files
-        run: |
-          python -m json.tool .claude-plugin/marketplace.json >/dev/null
-          python -m json.tool plugins/audit-workflow/.claude-plugin/plugin.json >/dev/null
-          python -m json.tool plugins/audit-workflow/.mcp.json >/dev/null
-          python -m json.tool plugins/audit-workflow/hooks/hooks.json >/dev/null
+      - name: Install validation dependency
+        run: python -m pip install PyYAML==6.0.3
+
+      - name: Validate marketplace and portable plugin artifacts
+        run: python scripts/validate_plugins.py
 
       - name: Compile Python files
         run: |
@@ -34,39 +33,6 @@ jobs:
             plugins/audit-workflow/scripts/audit_lib.py \
             plugins/audit-workflow/scripts/generate_summary.py \
             plugins/audit-workflow/scripts/generate_verification_report.py
-
-      - name: Validate Markdown frontmatter
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          paths = (
-              list(Path("plugins/audit-workflow/agents").glob("*.md"))
-              + list(Path("plugins/audit-workflow/commands").glob("*.md"))
-              + list(Path("plugins/audit-workflow/skills").glob("*/SKILL.md"))
-          )
-
-          errors = []
-          for path in sorted(paths):
-              lines = path.read_text(encoding="utf-8").splitlines()
-              if not lines or lines[0] != "---":
-                  errors.append(f"{path}: missing opening frontmatter delimiter")
-                  continue
-              try:
-                  close = lines[1:].index("---") + 1
-              except ValueError:
-                  errors.append(f"{path}: missing closing frontmatter delimiter")
-                  continue
-              if close < 2:
-                  errors.append(f"{path}: empty frontmatter")
-              if any(line.startswith("--- ") or line.endswith(" ---") for line in lines[: close + 1]):
-                  errors.append(f"{path}: inline frontmatter delimiter")
-
-          if errors:
-              raise SystemExit("\n".join(errors))
-
-          print(f"frontmatter ok ({len(paths)} files)")
-          PY
 
       - name: Validate plugin layout
         run: |

@@ -15,6 +15,13 @@
       "description": "Evidence-first governed audit workflow with discovery, triage, resolution, and independent verification.",
       "version": "1.0.0",
       "category": "development"
+    },
+    {
+      "name": "system-architect",
+      "description": "Turns software ideas and existing designs into lean, implementation-ready architecture SPECs, reviews, and design decisions.",
+      "version": "0.9.6",
+      "source": "./plugins/system-architect",
+      "category": "development"
     }
   ]
 }

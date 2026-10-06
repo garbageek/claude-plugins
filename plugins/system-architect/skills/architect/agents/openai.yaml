@@ -1,0 +1,4 @@
+interface:
+  display_name: "System Architect"
+  short_description: "Design architecture specs, review systems, resolve trade-offs"
+  default_prompt: "Walk me through an implementation-ready architecture SPEC for this product idea"

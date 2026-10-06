@@ -1,0 +1,252 @@
+= SPEC-<number>-<title>
+:toc:
+:sectnums:
+
+// Authoring template, not a completed SPEC. Replace placeholders with project
+// content or named unresolved decisions. Keep only applicable Method subsections.
+// For a compact SPEC retain all six core sections and condense their content;
+// do not replace full target scope with an MVP. Use source blocks for PlantUML
+// unless the target renderer's diagram extension is actually available.
+
+== Background
+
+<Problem, users, existing workflow, desired outcome, system boundary, and constraints.>
+
+<Source revision and evidence scope for an existing-system change.>
+
+=== Assumptions and open decisions
+
+[cols="1,3,3,2",options="header"]
+|===
+| ID | Assumption or unresolved decision | Impact if false / evidence needed | Blocking scope
+| ASM-001 | <Assumption> | <Affected design and verification source> | <None / named task / deployment>
+|===
+
+== Requirements
+
+=== Must Have
+
+* R-001: <Actor/trigger, preconditions, required or forbidden outcome, and observable success.>
+
+<For consequential behavior, give acceptance IDs, invariant owner, and evidence of a
+violation. Distinguish a hard constraint from an operational target with a measurement window.>
+
+=== Should Have
+
+* S-001: <Important but deferrable outcome; state whether included in this delivery.>
+
+=== Could Have
+
+* C-001: <Optional outcome, not an implicit implementation task.>
+
+=== Won't Have
+
+* W-001: <Explicit current exclusion.>
+
+=== Quality attribute scenarios
+
+// Optional: include only quality targets required by this system. Reuse the
+// requirement ID and state whether the measure is required, assumed, or observed.
+[cols="1,2,2,2,3,3",options="header"]
+|===
+| Requirement / quality | Stimulus and actor | Operating conditions | Affected component | Required response | Measure and basis
+| <Requirement ID / quality> | <Event / source> | <Workload / environment> | <Boundary> | <Observable behavior> | <Threshold, units, window, required/assumed/observed basis>
+|===
+
+== Method
+
+=== Similar Existing Applications
+
+// Optional: use only to resolve a real design uncertainty.
+[cols="1,2,2,2,2",options="header"]
+|===
+| System | Relevant observed pattern | What to borrow | What not to copy | Source / evidence status
+| <System> | <Pattern> | <Lesson> | <Unnecessary complexity> | <Official source and date, or unverified>
+|===
+
+=== Architecture and ownership
+
+<Current and target architecture where relevant; ownership, invariants, communication,
+dependency direction, deployment shape, and rationale. Local changes need no unrelated redesign.>
+
+[cols="1,2,2,2,2",options="header"]
+|===
+| Component | Responsibility and invariant | Authoritative state | Public boundary | Dependencies
+| D-001: <Component> | <Behavior and rule enforced here> | <Owned data; derived copies distinguished> | <Interface and callers> | <Allowed dependency direction>
+|===
+
+// Optional diagram: replace the example components; no database or worker is implied.
+[source,plantuml]
+----
+@startuml
+actor "Primary Actor" as Actor
+component "Client" as Client
+component "Application" as App
+Actor --> Client
+Client --> App
+@enduml
+----
+
+=== Data model and lifecycle
+
+[cols="2,1,3,2,3",options="header"]
+|===
+| Entity / field | Type | Identity / constraints | Writer | Lifecycle / access pattern
+| <Entity.field> | <Type> | <Key, nullability, relation, uniqueness> | <Owner> | <Creation, update, deletion, queries>
+|===
+
+<Add concrete DDL/schema where the table is insufficient. Define timestamp updates,
+concurrency, tenant/parent consistency when applicable, and source/target migration contracts.>
+
+=== Interfaces
+
+[cols="2,1,2,2,3,2",options="header"]
+|===
+| Operation | Caller / access | Input | Output | Validation / failure | Side effects
+| <API, CLI command, or function> | <Actor> | <Contract> | <Contract> | <Conditions and behavior> | <State / external effect>
+|===
+
+<Specify examples, pagination/ordering, concurrency, idempotency, and compatibility
+where required. Distinguish proposed internal interfaces from verified provider APIs.>
+
+=== Primary workflows
+
+* Trigger and preconditions: <Actor/event and state.>
+* Main path: <Ordered operations and transaction boundary.>
+* Completion: <Persisted state and user-visible output.>
+* Failure and recovery: <Partial effects, timeout, retry, cancellation, reconciliation.>
+* Evidence: <Manual action and expected observation.>
+
+=== Interactive client state
+
+// Optional: remove unless mutable input, async work, or historical results need it.
+[cols="2,2,2,3",options="header"]
+|===
+| State boundary | Owner / stable identity | Allowed changes | Visible result / stale or failure behavior
+| <Draft / submitted snapshot / persisted job-result / selected result> | <Component and key> | <Events / transitions> | <Late output, navigation, recovery, result/export identity>
+|===
+
+=== Authorization and ownership
+
+// Include only for an applicable product access contract.
+[cols="1,2,2,2",options="header"]
+|===
+| Actor / role | Resource and action | Allowed scope | Enforcement boundary
+| <Actor> | <Operation> | <Owned subset> | <Trusted boundary>
+|===
+
+=== Background jobs and integrations
+
+// Include only when the selected workflow needs asynchronous or external work.
+[cols="2,2,2,3,3",options="header"]
+|===
+| Job / trigger | Payload and identity | Completion | Retry / duplicate semantics | Terminal failure / recovery
+| <Job> | <Contract> | <State/result> | <Bounded policy and unknown-outcome handling> | <Owner and action>
+|===
+
+[cols="2,2,2,3,3",options="header"]
+|===
+| Integration | Direction / operation | Configuration | Data / failure contract | Verified source / unresolved dependency
+| <Provider> | <Call/event> | <Required setup> | <Payload, limits, errors> | <Official documentation and version/date>
+|===
+
+=== AI or agent component
+
+// Optional: remove this entire subsection unless model-driven behavior is required.
+// Use the same contract as the AI template in references/templates.md.
+[cols="1,4",options="header"]
+|===
+| Boundary | Concrete contract
+| Task and caller | <Required outcome, why a model is needed, component/caller>
+| Inputs and authority | <Required context, trusted instructions versus untrusted input, actual tools and permitted effects>
+| Output and validation | <Exact final returned/acted-upon candidate, allowed normalization, structural/domain checks and their limits>
+| Missing/invalid results | <Caller error versus dependency failure, legitimate no-op, explicit fallback, partial/refused result and visible outcome>
+| Limits and repair | <Total call/time/cost bounds, single-pass constraint if required, mechanical repair versus missing facts, ambiguous-effect reconciliation>
+| State and compatibility | <Policy/model/schema/configuration identity, input snapshot, stale-result handling; handoff/cache and record round-trip only if needed>
+| Acceptance | <Manual operation, expected useful output/effect, failure/recovery observation>
+|===
+
+=== Operations and reliability
+
+<Required configuration, deployment, health signals, resource bounds, shutdown,
+recovery ownership, and rollout/rollback. State workload and targets as requirements
+or design assumptions, never as measured results. Keep security content within the
+product's requested or established requirements.>
+
+<For timed chains, account for admission, queue wait, retries, child work, and return
+margin within one end-to-end budget. Distinguish timeout/cancellation from durable
+completion and explain how late results remain deliverable.>
+
+<For pipelines, define effective source identity, actual data-flow progress, checkpoint/
+output consistency, repeated-record failure, allowed exclusion versus visible stop, and
+replay/retention. Healthy processes or moving poll cursors are not proof of useful progress.>
+
+=== Migration and capability preservation
+
+// Optional: use only for an existing-system rewrite, consolidation, or migration.
+[cols="2,2,2,3,3",options="header"]
+|===
+| Capability | Current path / evidence | Target owner / path | Disposition and authority | Completion / remaining gap
+| <Actual behavior> | <Inspected caller/state/result> | <Destination> | <Retain / authorized change or removal / unresolved> | <Observation or exact gap>
+|===
+
+<For each transition, identify ingress, authoritative readers/writers, mixed-version
+compatibility, divergence handling, rollback limits, cutover owner, and observable exit
+condition for temporary paths. Preserve required compatibility until retirement is justified.>
+
+=== Trade-offs
+
+[cols="2,2,2,3",options="header"]
+|===
+| Choice | Benefit | Cost / alternative | Revisit trigger
+| <Decision> | <Requirement served> | <Consequence> | <New evidence>
+|===
+
+// Optional: keep decision evidence inline; do not create a research appendix by default.
+// For a consequential comparison, check hard constraints before ranking options and
+// use the same workload, version, units and cost basis. Mark non-comparable values.
+// Preserve exact claim -> source locator -> version/environment -> support/caveat
+// where an uncertainty could change the architecture. Recommendations are design choices.
+
+== Implementation
+
+[cols="1,1,3,2,2,3",options="header"]
+|===
+| Task | Requirements | Concrete change | Dependencies | Execution boundary | Observable completion
+| I-001 | R-001 | <Behavior and verified/proposed component or path> | <Task or none> | <Source / environment / operator> | <Visible result>
+|===
+
+<Dependency-ordered work, including a usable vertical slice without dropping the full
+target scope. Distinguish saved source changes from pending runtime checks and operator
+work. An implementation plan is not evidence that its code exists. No implicit automated-test
+or documentation tasks. Preserve an explicitly requested product evaluation capability
+without mistaking it for an unsolicited automated test suite.>
+
+=== Requirement traceability
+
+[cols="1,2,1,1,3",options="header"]
+|===
+| Must Have | Design / interface | Task | Milestone | Observable acceptance
+| R-001 | D-001 / <operation> | I-001 | M-001 | AC-001: <Action and result>
+|===
+
+== Milestones
+
+[cols="1,3,2,3,3",options="header"]
+|===
+| Milestone | Usable deliverable | Tasks / dependencies | Acceptance criteria | Manual/runtime evidence
+| M-001 | <End-to-end slice> | I-001 / <dependency> | AC-001: <Required outcome> | <Action, environment, expected observation>
+|===
+
+<Keep planned evidence distinct from observations already collected.>
+
+== Gathering Results
+
+[cols="1,3,2,2,2,3",options="header"]
+|===
+| Outcome | Measurement and source | Workload / window | Target or baseline | Evidence status | Follow-up
+| R-001 | <Signal> | <Operating context> | <Required or proposed value> | <Planned / observed, environment> | <Action if unmet>
+|===
+
+<Identify remaining design blockers, implementation gaps, runtime limits, or operational
+acceptance separately. A complete document is not a production deployment.>
