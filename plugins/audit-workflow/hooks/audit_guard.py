@@ -124,94 +124,93 @@ def _contains_lifecycle_status(tool_input: dict) -> bool:
     return bool(STATUS_RE.search(text) or MD_STATUS_RE.search(text))
 
 
-BUNDLED_AUDIT_CLI_RE = re.compile(
-    r'^\s*(?:python(?:3(?:\.\d+)?)?(?:\.exe)?|py(?:\.exe)?)\s+'
-    r'(?:-[^\s]+\s+)*["\']?(?:[^"\']*[\\/])?scripts[\\/]audit\.py["\']?(?:\s|$)',
+# A segment that runs the bundled runtime (`python3 ".../scripts/audit.py" verify ...`)
+# is the sanctioned write path. Its quoted arguments may legitimately mention audit
+# paths and status words, e.g. `--evidence "see audit/tickets/001-BUG-x.md"`.
+RUNTIME_SEGMENT_RE = re.compile(
+    r"""^\s*(?:&\s*)?(?:python(?:3(?:\.\d+)?)?(?:\.exe)?|py(?:\.exe)?(?:\s+-3)?)(?:\s+-[IBEsSuO]+)*\s+"""
+    r"""(?:"(?:[^"]*[\\/])?scripts[\\/]audit\.py"|'(?:[^']*[\\/])?scripts[\\/]audit\.py'|(?:\S*[\\/])?scripts[\\/]audit\.py)(?=\s|$)""",
     re.IGNORECASE,
 )
+QUOTED_RE = re.compile(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'')
 
 
-def _split_shell_segments(command: str) -> list[str]:
-    """Split shell chains/pipelines without splitting separators inside quotes."""
+def _shell_segments(command: str) -> list[str]:
+    """Split on unquoted ;, &, |, and newlines; quoted text stays in its segment."""
     segments: list[str] = []
     current: list[str] = []
-    quote: str | None = None
-    escaped = False
+    quote = ""
     i = 0
     while i < len(command):
         ch = command[i]
-        if escaped:
+        if quote:
             current.append(ch)
-            escaped = False
-            i += 1
-            continue
-        if ch in {"\\\\", "`"}:
-            current.append(ch)
-            escaped = True
-            i += 1
-            continue
-        if quote is not None:
-            current.append(ch)
-            if ch == quote:
-                quote = None
-            i += 1
-            continue
-        if ch in {"'", '"'}:
+            if ch == "\\" and quote == '"' and i + 1 < len(command):
+                current.append(command[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in "'\"":
             quote = ch
             current.append(ch)
-            i += 1
-            continue
-        if ch == ";" or ch == "|" or (ch == "&" and i + 1 < len(command) and command[i + 1] == "&"):
-            segment = "".join(current).strip()
-            if segment:
-                segments.append(segment)
+        elif ch in ";&|\n":
+            segments.append("".join(current))
             current = []
-            if ch in {"|", "&"} and i + 1 < len(command) and command[i + 1] == ch:
-                i += 2
-            else:
-                i += 1
-            continue
-        current.append(ch)
+        else:
+            current.append(ch)
         i += 1
-    segment = "".join(current).strip()
-    if segment:
-        segments.append(segment)
-    return segments
+    segments.append("".join(current))
+    return [seg for seg in segments if seg.strip()]
 
 
-def _is_bundled_audit_cli_segment(segment: str) -> bool:
-    return bool(BUNDLED_AUDIT_CLI_RE.search(segment))
+def _segment_writes_audit(segment: str, tool: str) -> bool:
+    if RUNTIME_SEGMENT_RE.match(segment):
+        # Only unquoted shell syntax (a redirect into an audit file) can turn a
+        # runtime call into a direct write; quoted arguments are data.
+        def mask_argument(match: re.Match) -> str:
+            # A quoted redirection destination is still a file target, not CLI data.
+            if re.search(r">\s*$", segment[:match.start()]):
+                return match.group(0)[1:-1]
+            return '""'
+
+        segment = QUOTED_RE.sub(mask_argument, segment)
+        return bool(re.search(rf"(?:>|>>)\s*{AUDIT_MARKDOWN_PATH}", segment, re.IGNORECASE))
+    if not AUDIT_MARKDOWN_PATH_RE.search(segment):
+        return False
+    common = DIRECT_MUTATOR_RE.search(segment) or INDIRECT_AUDIT_WRITE_RE.search(segment)
+    powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(segment)
+    return bool(common or powershell)
 
 
 def _shell_direct_audit_write(command: str, tool: str) -> bool:
-    for segment in _split_shell_segments(command):
-        if not AUDIT_MARKDOWN_PATH_RE.search(segment):
-            continue
-        # Redirections/copy-style writes are never lifecycle CLI behavior, even
-        # when a bundled CLI invocation appears earlier in the same segment.
-        if INDIRECT_AUDIT_WRITE_RE.search(segment):
-            return True
-        if tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(segment):
-            return True
-        # The lifecycle CLI legitimately contains --status PASS/... plus audit
-        # paths in evidence arguments. Allow that one segment, but keep checking
-        # every sibling command in a chain or pipeline.
-        if _is_bundled_audit_cli_segment(segment):
-            continue
-        if DIRECT_MUTATOR_RE.search(segment):
-            return True
-    return False
+    if not AUDIT_MARKDOWN_PATH_RE.search(command):
+        return False
+    segments = _shell_segments(command)
+    runtime = [seg for seg in segments if RUNTIME_SEGMENT_RE.match(seg)]
+    if not runtime:
+        # Whole-command matching keeps pipelines such as `cat x | sed ... | tee x` and
+        # PowerShell `(Get-Content x) -replace ... | Set-Content x` detectable.
+        common = DIRECT_MUTATOR_RE.search(command) or INDIRECT_AUDIT_WRITE_RE.search(command)
+        powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(command)
+        return bool(common or powershell)
+    if any(_segment_writes_audit(seg, tool) for seg in runtime):
+        return True
+    rest = "\n".join(seg for seg in segments if seg not in runtime)
+    if not rest or not AUDIT_MARKDOWN_PATH_RE.search(rest):
+        return False
+    common = DIRECT_MUTATOR_RE.search(rest) or INDIRECT_AUDIT_WRITE_RE.search(rest)
+    powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(rest)
+    return bool(common or powershell)
 
 
 def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
     audit = plugin_root() / "scripts" / "audit.py"
-    return subprocess.run(
-        [sys.executable, str(audit), "--root", str(project), *args],
-        capture_output=True,
-        text=True,
-        timeout=12,
-        check=False,
-    )
+    cmd = [sys.executable, str(audit), "--root", str(project), *args]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=12, check=False)
+    except subprocess.TimeoutExpired:
+        # Stay below the 15-second hook timeout and report instead of crashing the hook.
+        return subprocess.CompletedProcess(cmd, 124, "", f"audit {' '.join(args)} timed out after 12 seconds")
 
 
 def pre_tool_use(payload: dict) -> int:

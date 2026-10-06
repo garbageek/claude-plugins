@@ -721,6 +721,21 @@ def load_records() -> list[dict[str, Any]]:
         }
         records.append(record)
 
+    # Dependency edges are symmetric. Ticket files written by 1.0.x may carry
+    # only one side (for example `Blocks` on the blocker), so merge both
+    # directions before scheduling or exporting.
+    by_id = {r["id"]: r for r in records}
+    for r in records:
+        for blocked in r["blocks"]:
+            target = by_id.get(blocked)
+            if target is not None and r["id"] not in target["depends_on"]:
+                target["depends_on"] = sorted(set(target["depends_on"]) | {r["id"]})
+    for r in records:
+        for dep in r["depends_on"]:
+            target = by_id.get(dep)
+            if target is not None and r["id"] not in target["blocks"]:
+                target["blocks"] = sorted(set(target["blocks"]) | {r["id"]})
+
     ticket_nums = {r["num"] for r in records if r["num"] is not None}
     for v in verif_index.values():
         if v["num"] not in ticket_nums:
@@ -1549,6 +1564,26 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(f"({len(candidates) - 1} more ticket(s) in queue)")
 
 
+def _one_sided_dependency_edges() -> list[tuple[str, str]]:
+    """Return (blocker, blocked) edges recorded on only one of the two tickets."""
+    tickets: dict[str, dict[str, Any]] = {}
+    for p in _all_ticket_files():
+        t = parse_ticket(p)
+        if t["num"] is not None:
+            tickets.setdefault(t["id"], t)
+    edges: set[tuple[str, str]] = set()
+    for tid, t in tickets.items():
+        for blocked in t["blocks"]:
+            other = tickets.get(blocked)
+            if other is not None and tid not in other["depends_on"]:
+                edges.add((tid, blocked))
+        for blocker in t["depends_on"]:
+            other = tickets.get(blocker)
+            if other is not None and tid not in other["blocks"]:
+                edges.add((blocker, tid))
+    return sorted(edges)
+
+
 def _doctor_findings() -> tuple[list[str], list[str]]:
     issues: list[str] = []
     warnings: list[str] = []
@@ -1641,6 +1676,12 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
             elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "INVALID"}:
                 issues.append(f"Ticket {r['id']} depends on non-usable ticket {dep} ({status_by_id.get(dep)})")
 
+    for blocker, blocked in _one_sided_dependency_edges():
+        warnings.append(
+            f"Dependency {blocker} blocks {blocked} is recorded on only one ticket; "
+            "scheduling uses it, `doctor --fix` writes the missing side"
+        )
+
     visiting: set[str] = set()
     visited: set[str] = set()
 
@@ -1675,6 +1716,12 @@ def cmd_doctor(args: argparse.Namespace) -> None:
                 VERIF_DIR.mkdir(parents=True, exist_ok=True)
                 _write_stub_verification(VERIF_DIR / p.name, num, p)
                 fixed.append(f"created verification stub for {num:03d}")
+        edges = _one_sided_dependency_edges()
+        if edges:
+            with _create_lock_cm():
+                for blocker, blocked in edges:
+                    _mutate_dependencies(blocker, depends_on=[], blocks=[blocked], remove=False)
+                    fixed.append(f"recorded both sides of dependency {blocker} blocks {blocked}")
         for item in fixed:
             print(f"FIXED: {item}")
 

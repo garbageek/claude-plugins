@@ -19,7 +19,7 @@ From a clone of this repository:
 
 Evidence-first audit workflow with role skills/agents, lifecycle hooks, structured MCP tools, and a Python CLI fallback at `plugins/audit-workflow/scripts/audit.py`.
 
-The plugin intentionally has no top-level `bin/` directory so it can pass claude.ai/Cowork organization marketplace sync. The runtime currently requires Python 3 as `python3`; macOS/Linux Claude Code and hosted Claude surfaces are supported. Native Windows Claude Code is not claimed as supported until the Python launcher is made host-configurable.
+The plugin intentionally has no top-level `bin/` directory so it can pass claude.ai/Cowork organization marketplace sync. The runtime currently requires Python 3 as `python3`; The target host platform is macOS/Linux Claude Code. The package removes the top-level `bin/` sync blocker, but hosted sync acceptance remains unverified. Installed plugin skills are also available in Chat; the Cowork runtime for the `python3` hooks and the stdio MCP server has not been verified. Native Windows Claude Code is not claimed as supported until the Python launcher is made host-configurable.
 
 See [plugins/audit-workflow/README.md](plugins/audit-workflow/README.md).
 

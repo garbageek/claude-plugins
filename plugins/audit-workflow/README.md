@@ -1,6 +1,6 @@
 # Audit Workflow Plugin
 
-Evidence-first governed audit workflow for Claude Code and hosted Claude plugin sync.
+Evidence-first governed audit workflow for Claude Code. The package layout is compatible with claude.ai organization plugin sync.
 
 ```text
 skills/      role procedures
@@ -63,11 +63,11 @@ python3 plugins/audit-workflow/scripts/audit.py <command> [options]
 
 ## Platform scope
 
-The runtime currently requires a `python3` executable. macOS/Linux Claude Code and hosted Claude surfaces are supported. Native Windows Claude Code is intentionally not advertised as supported yet; the PowerShell mutation matcher is present, but the Python launcher remains POSIX-oriented.
+The runtime currently requires a `python3` executable. The target host platform is macOS/Linux Claude Code. Installed plugin skills are also available in Chat; the Cowork runtime for the `python3` hooks and the stdio MCP server has not been verified. Native Windows Claude Code is intentionally not advertised as supported yet; the PowerShell mutation matcher is present, but the Python launcher remains POSIX-oriented.
 
 ## Files
 
-- `docs/CONTRACT.md` — canonical lifecycle and role contract.
-- `docs/PROTOCOL.md` — operator quick reference.
-- `docs/references/` — durable audit templates/references.
-- `scripts/audit.py` — canonical runtime and direct CLI fallback.
+- `docs/CONTRACT.md` â€” canonical lifecycle and role contract.
+- `docs/PROTOCOL.md` â€” operator quick reference.
+- `docs/references/` â€” durable audit templates/references.
+- `scripts/audit.py` â€” canonical runtime and direct CLI fallback.

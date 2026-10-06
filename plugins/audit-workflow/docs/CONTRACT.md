@@ -239,6 +239,8 @@ Equivalent ticket field:
 
 `audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `INVALID`).
 
+The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. Readers treat an edge recorded on only one side as a full edge. `audit_doctor` warns about such edges, and `audit_doctor(fix=true)` writes the missing side.
+
 ---
 
 ## 9. Git and Commit Ownership
@@ -257,7 +259,7 @@ Equivalent ticket field:
 
 `audit_doctor` (or CLI `doctor`) reports the current audit workflow health.
 
-`audit_doctor(fix=true)` (or CLI `doctor --fix`) may create missing directories, onboarding files, or verification stubs. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
+`audit_doctor(fix=true)` (or CLI `doctor --fix`) may create missing directories, onboarding files, or verification stubs, and may write the missing side of one-sided dependency edges. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
 
 A command may report both the fix attempt and the re-check, but the final issue count must represent the post-fix state.
 

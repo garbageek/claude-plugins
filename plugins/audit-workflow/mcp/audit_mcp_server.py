@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "audit-workflow"
-SERVER_VERSION = "1.1.0"
-PROTOCOL_VERSION = "2025-03-26"
-SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION}
+SERVER_VERSION = "1.1.1"
+# structuredContent in tool results is defined from 2025-06-18; older clients ignore it.
+PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2025-03-26"}
 
 
 def plugin_root() -> Path:

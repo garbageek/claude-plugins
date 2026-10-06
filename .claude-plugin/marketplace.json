@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Engineering plugin marketplace for governed audit workflows and portable architecture skills.",
-    "version": "1.1.0"
+    "version": "1.1.1"
   },
   "plugins": [
     {

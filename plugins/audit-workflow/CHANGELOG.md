@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1
+
+- `next`, `export` and `doctor` treat a dependency recorded on only one ticket (as 1.0.x `deps add N --blocks M` wrote it) as a full edge. `doctor` warns about such edges and `doctor --fix` writes the missing side.
+- The audit guard again allows the bundled runtime (`python3 .../scripts/audit.py ...`) when its quoted arguments mention audit paths and status words, for example `--evidence "see audit/tickets/001-BUG-x.md"`. The check is per shell segment, so a direct rewrite chained after a runtime call, or a redirect of runtime output into an audit file, is still denied.
+- Hook-launched `audit doctor` runs that exceed 12 seconds report a timeout instead of crashing the hook.
+- The MCP server negotiates `2025-06-18` (the revision that defines `structuredContent`) and still accepts `2025-03-26`.
+- The README no longer claims support on all hosted Claude surfaces: plugin skills are available in Chat, while hosted sync acceptance and the Cowork runtime for hooks and the stdio MCP server are unverified.
+
 ## 1.1.0
 
 - Removed the top-level `bin/` directory and moved the canonical CLI/runtime to `scripts/audit.py` for claude.ai/Cowork marketplace compatibility.
