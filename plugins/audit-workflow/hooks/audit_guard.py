@@ -125,8 +125,8 @@ def _contains_lifecycle_status(tool_input: dict) -> bool:
 
 
 BUNDLED_AUDIT_CLI_RE = re.compile(
-    r'^\\s*(?:python(?:3(?:\\.\\d+)?)?(?:\\.exe)?|py(?:\\.exe)?)\\s+'
-    r'(?:-[^\\s]+\\s+)*["\\\']?(?:[^"\\\']*[\\\\/])?scripts[\\\\/]audit\\.py["\\\']?(?:\\s|$)',
+    r'^\s*(?:python(?:3(?:\.\d+)?)?(?:\.exe)?|py(?:\.exe)?)\s+'
+    r'(?:-[^\s]+\s+)*["\']?(?:[^"\']*[\\/])?scripts[\\/]audit\.py["\']?(?:\s|$)',
     re.IGNORECASE,
 )
 
