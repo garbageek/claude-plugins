@@ -1,13 +1,13 @@
 # Fix Roadmap
 
-This roadmap is a human-readable projection of executable triage metadata. Every listed ticket should already be updated with `audit triage set`, and dependency edges should be updated with `audit deps add` or `audit/triage/dependencies.md`.
+This roadmap is a human-readable projection of executable triage metadata. Every listed ticket should already be updated with `python3 /path/to/audit-workflow/scripts/audit.py triage set`, and dependency edges should be updated with `python3 /path/to/audit-workflow/scripts/audit.py deps add` or `audit/triage/dependencies.md`.
 
 ## Phase 1: Critical Path
 
 **Goal:** Stabilize release blockers and shared foundations.
 **Tickets:** {list}
 **Effort:** ~{N} hours
-**Execution check:** first item should match `audit next --for resolution` unless a dependency is unresolved.
+**Execution check:** first item should match `python3 /path/to/audit-workflow/scripts/audit.py next --for resolution` unless a dependency is unresolved.
 
 ## Phase 2: Quick Wins
 

@@ -6,14 +6,16 @@ tags: [audit, verification, validate, verdict, evidence]
 
 # Audit Verification
 
+Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI only as fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" <command> ...`.
+
 Purpose: independently verify resolved tickets against the original acceptance criteria and current code state.
 
 ## First move from empty context
 
 ```bash
-audit init
-audit doctor
-audit next --for verification --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for verification --json
 ```
 
 If no ticket is returned, report that nothing is awaiting verification. Do not create or resolve tickets.
@@ -21,9 +23,9 @@ If no ticket is returned, report that nothing is awaiting verification. Do not c
 ## PASS flow
 
 ```bash
-audit show 001
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" show 001
 # inspect code and evidence independently
-audit verify 001   --status PASS   --verified-commit def456   --criterion "AC1: pass - null-user payload returns typed validation error"   --evidence "Manual reproducer no longer fails"   --test "manual reproducer: pass"   --verdict "All acceptance criteria satisfied"   --as audit-verification   --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" verify 001   --status PASS   --verified-commit def456   --criterion "AC1: pass - null-user payload returns typed validation error"   --evidence "Manual reproducer no longer fails"   --test "manual reproducer: pass"   --verdict "All acceptance criteria satisfied"   --as audit-verification   --json
 ```
 
 Use `PARTIAL` or `FAIL` when evidence is incomplete or a criterion is not satisfied.
@@ -32,7 +34,7 @@ Use `PARTIAL` or `FAIL` when evidence is incomplete or a criterion is not satisf
 
 - read ticket, verification record, code, and resolution evidence;
 - run independent checks/commands needed to validate the result;
-- set `PASS`, `PARTIAL`, `FAIL`, `REGRESS`, `BLOCKED`, `WONTFIX`, or `INVALID` through `audit verify`.
+- set `PASS`, `PARTIAL`, `FAIL`, `REGRESS`, `BLOCKED`, `WONTFIX`, or `INVALID` through `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" verify`.
 
 ## Forbidden actions
 

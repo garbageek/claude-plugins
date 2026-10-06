@@ -6,15 +6,17 @@ tags: [audit, triage, priority, dependency, roadmap]
 
 # Audit Triage
 
-Purpose: turn an audit queue into executable ordering. A prose plan is optional; `audit next --for resolution` must consume the metadata.
+Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI only as fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" <command> ...`.
+
+Purpose: turn an audit queue into executable ordering. A prose plan is optional; `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution` must consume the metadata.
 
 ## First move from empty context
 
 ```bash
-audit init
-audit doctor
-audit export --json
-audit summary
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" export --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
 ```
 
 If no tickets exist, report an empty queue. Do not create findings during triage.
@@ -22,8 +24,8 @@ If no tickets exist, report an empty queue. Do not create findings during triage
 ## Update executable metadata
 
 ```bash
-audit triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
-audit deps add 001 --depends-on 003
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" deps add 001 --depends-on 003
 ```
 
 Dependency semantics:
@@ -32,7 +34,7 @@ Dependency semantics:
 003 blocks 001
 ```
 
-Ticket `001` is skipped by `audit next --for resolution` until `003` is resolved.
+Ticket `001` is skipped by `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution` until `003` is resolved.
 
 ## Scoring
 
@@ -61,4 +63,4 @@ Ticket `001` is skipped by `audit next --for resolution` until `003` is resolved
 
 ## Stop condition
 
-Stop when `audit next --for resolution --json` returns the expected highest-priority unblocked ticket.
+Stop when `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json` returns the expected highest-priority unblocked ticket.

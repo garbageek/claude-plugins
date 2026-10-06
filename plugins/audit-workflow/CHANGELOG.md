@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0
+
+- Removed the top-level `bin/` directory and moved the canonical CLI/runtime to `scripts/audit.py` for claude.ai/Cowork marketplace compatibility.
+- Collapsed duplicated CLI fallback constants, the `audit_lib` shim, the process-global `re.compile` monkeypatch, and the parity checker into one runtime source of truth.
+- Fixed PASS gating so only explicit `ACn: pass` results satisfy acceptance criteria; non-pass criteria are stored unchecked.
+- Closed chained shell-command lifecycle bypasses and added PowerShell mutation recognition.
+- Restored source editing capability to the `audit-resolution` agent.
+- Made `doctor --fix` report and exit from a fresh post-fix diagnosis.
+- Made dependency edges canonical and bidirectional for add/remove operations.
+- Bounded Stop-hook feedback with `stop_hook_active` and shortened nested doctor timeout.
+- Fixed MCP protocol negotiation so the server never claims unsupported client versions.
+- Expanded MCP lifecycle coverage with show, open, triage, and dependency add/remove tools plus stricter schemas and structured results.
+- Removed duplicate role command wrappers; skills remain the canonical role prompts.
+- Silenced SessionStart when a project has no audit state.
+- Aligned the plugin-local license with the repository MIT license.
+- Removed unused report generators and vendored Claude documentation snapshots.
+- Extended repository validation to the OpenAI/Codex marketplace.
+- Declared current platform scope explicitly: Python-3 macOS/Linux + hosted Claude; native Windows Claude Code is not claimed yet.
+
 ## 1.0.1
 
 - Made `docs/CONTRACT.md` the single canonical behavioral contract and reduced `docs/PROTOCOL.md` to an operator quick reference to avoid duplicated status, actor, transition, evidence, field, and dependency tables.

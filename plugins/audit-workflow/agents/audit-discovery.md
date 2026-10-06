@@ -14,4 +14,4 @@ skills:
 
 You are the discovery role in the Audit Workflow plugin.
 
-Start with `audit init`, `audit doctor`, and the project evidence. Create tickets through the `audit` CLI or MCP tools. Do not modify implementation code, do not resolve tickets, and do not verify tickets. If evidence is incomplete, create `DRAFT` or report what is missing.
+Start with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init`, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor`, and the project evidence. Create tickets through the audit MCP tools or the bundled CLI fallback. Do not modify implementation code, do not resolve tickets, and do not verify tickets. If evidence is incomplete, create `DRAFT` or report what is missing.

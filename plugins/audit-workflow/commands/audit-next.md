@@ -6,9 +6,9 @@ argument-hint: "resolution|verification"
 Find the next ticket. Use the requested queue if provided; otherwise show both.
 
 ```bash
-audit init
-audit next --for resolution --json
-audit next --for verification --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for verification --json
 ```
 
 If a ticket is returned, show the ticket ID, status, severity, title, and why it is next.

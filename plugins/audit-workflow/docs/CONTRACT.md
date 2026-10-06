@@ -4,30 +4,29 @@ This document defines the canonical behavioral contract shared by the audit-tick
 
 ---
 
-## 1. Canonical CLI Invocation
+## 1. Canonical Runtime Invocation
 
-Cold-start rule: if the project has no `audit/` directory yet, initialize it first:
+The structured MCP tools are the preferred machine interface. If the project has no `audit/` directory, initialize it with `audit_init`.
 
-```bash
-python /path/to/audit-discovery/scripts/audit --root /path/to/project init
+The canonical implementation is one Python runtime:
+
+```text
+plugins/audit-workflow/scripts/audit.py
 ```
 
-`init` is idempotent and creates the expected audit directories plus lightweight onboarding docs. Models must prefer `init` over manually creating folders.
-
-The bundled CLI is the required command surface:
+CLI fallback from a plugin-loaded skill/agent/command:
 
 ```bash
-python /path/to/audit-discovery/scripts/audit --root /path/to/project <command>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" --root /path/to/project <command>
 ```
 
-The CLI is directly copyable as a single file:
+CLI fallback from a repository clone:
 
 ```bash
-cp /path/to/audit-discovery/scripts/audit ./audit-cli
-python ./audit-cli <command>
+python3 plugins/audit-workflow/scripts/audit.py --root /path/to/project <command>
 ```
 
-Project-specific wrappers are allowed only as optional adapters.
+Do not assume an `audit` executable is on `PATH`; hosted Claude distribution forbids the former top-level `bin/` layout. The runtime is not maintained as a second self-contained fallback copy: lifecycle constants, parsing, and commands have one canonical implementation in `scripts/audit.py`.
 
 ---
 
@@ -89,7 +88,7 @@ A transition must satisfy both the current-state transition table and actor owne
 | `WONTFIX` | `OPEN` |
 | `INVALID` | `OPEN` |
 
-Runtime implementations must expose this exact matrix. The copyable single-file CLI mode and module-import mode must not diverge; changes to statuses, actors, transitions, or filename parsing require a parity update for both runtime paths in the same change.
+The canonical runtime must expose this exact matrix. Changes to statuses, actors, transitions, or filename parsing are made once in `scripts/audit.py`; hooks and MCP invoke that runtime instead of maintaining mirrored lifecycle implementations.
 
 ---
 
@@ -104,7 +103,7 @@ Runtime implementations must expose this exact matrix. The copyable single-file 
 - `## Acceptance Criteria`
 - `## Suggested Verification`
 
-Incomplete tickets stay `DRAFT` and are excluded from `audit next --for resolution`.
+Incomplete tickets stay `DRAFT` and are excluded from `audit_next(for_role="resolution")` or the CLI equivalent.
 
 Placeholder content includes HTML comments, `TODO`, and brace placeholders such as `{description}` or `{path/to/file.py}`.
 
@@ -120,7 +119,7 @@ Resolution requires:
 Use:
 
 ```bash
-audit resolve 042 \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve 042 \
   --fix-commit abc123 \
   --evidence "Regression test added: tests/test_parser.py::test_null_input" \
   --test "pytest tests/test_parser.py: pass" \
@@ -141,7 +140,7 @@ audit resolve 042 \
 Use:
 
 ```bash
-audit verify 042 \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" verify 042 \
   --status PASS \
   --verified-commit def456 \
   --criterion "AC1: pass - pytest tests/test_parser.py::test_null_input" \
@@ -218,7 +217,7 @@ Tickets also carry machine-readable fields:
 **Phase:** `critical-path|quick-wins|feature-parity|backlog|...`
 ```
 
-`audit next --for resolution` consumes this metadata plus dependency edges.
+`audit_next(for_role="resolution")` or the CLI equivalent consumes this metadata plus dependency edges.
 
 ---
 
@@ -238,7 +237,7 @@ Equivalent ticket field:
 **Depends On:** `003`
 ```
 
-`audit doctor` rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `INVALID`).
+`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `INVALID`).
 
 ---
 
@@ -256,9 +255,9 @@ Equivalent ticket field:
 
 ## 10. Doctor Fix Semantics
 
-`audit doctor` reports the current audit workflow health.
+`audit_doctor` (or CLI `doctor`) reports the current audit workflow health.
 
-`audit doctor --fix` may create missing directories, onboarding files, or verification stubs. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
+`audit_doctor(fix=true)` (or CLI `doctor --fix`) may create missing directories, onboarding files, or verification stubs. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
 
 A command may report both the fix attempt and the re-check, but the final issue count must represent the post-fix state.
 
@@ -275,7 +274,7 @@ When `--json` is passed:
 
 MCP tools must return structured JSON text in the MCP content envelope. If the wrapped CLI command emits human text, the MCP layer must normalize it into a JSON object and preserve the raw text in a named field such as `stdout_text`.
 
-MCP `audit_create` has an explicit cold-start side effect: it runs `audit init` before ticket creation. The tool result must expose both initialization and creation results, and must not continue to creation if initialization fails.
+MCP `audit_create` has an explicit cold-start side effect: it initializes the audit tree before ticket creation. The tool result must expose both initialization and creation results, and must not continue to creation if initialization fails.
 
 ---
 
@@ -284,7 +283,7 @@ MCP `audit_create` has an explicit cold-start side effect: it runs `audit init` 
 The canonical source of truth is the normalized record produced by:
 
 ```bash
-audit export --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" export --json
 ```
 
 Reports and baselines should derive from this model rather than re-parsing different subsets independently. Baselines include status, semantic metadata, and content hashes.
