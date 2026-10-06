@@ -124,12 +124,83 @@ def _contains_lifecycle_status(tool_input: dict) -> bool:
     return bool(STATUS_RE.search(text) or MD_STATUS_RE.search(text))
 
 
+BUNDLED_AUDIT_CLI_RE = re.compile(
+    r'^\\s*(?:python(?:3(?:\\.\\d+)?)?(?:\\.exe)?|py(?:\\.exe)?)\\s+'
+    r'(?:-[^\\s]+\\s+)*["\\\']?(?:[^"\\\']*[\\\\/])?scripts[\\\\/]audit\\.py["\\\']?(?:\\s|$)',
+    re.IGNORECASE,
+)
+
+
+def _split_shell_segments(command: str) -> list[str]:
+    """Split shell chains/pipelines without splitting separators inside quotes."""
+    segments: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    escaped = False
+    i = 0
+    while i < len(command):
+        ch = command[i]
+        if escaped:
+            current.append(ch)
+            escaped = False
+            i += 1
+            continue
+        if ch in {"\\\\", "`"}:
+            current.append(ch)
+            escaped = True
+            i += 1
+            continue
+        if quote is not None:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            current.append(ch)
+            i += 1
+            continue
+        if ch == ";" or ch == "|" or (ch == "&" and i + 1 < len(command) and command[i + 1] == "&"):
+            segment = "".join(current).strip()
+            if segment:
+                segments.append(segment)
+            current = []
+            if ch in {"|", "&"} and i + 1 < len(command) and command[i + 1] == ch:
+                i += 2
+            else:
+                i += 1
+            continue
+        current.append(ch)
+        i += 1
+    segment = "".join(current).strip()
+    if segment:
+        segments.append(segment)
+    return segments
+
+
+def _is_bundled_audit_cli_segment(segment: str) -> bool:
+    return bool(BUNDLED_AUDIT_CLI_RE.search(segment))
+
+
 def _shell_direct_audit_write(command: str, tool: str) -> bool:
-    if not AUDIT_MARKDOWN_PATH_RE.search(command):
-        return False
-    common = DIRECT_MUTATOR_RE.search(command) or INDIRECT_AUDIT_WRITE_RE.search(command)
-    powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(command)
-    return bool(common or powershell)
+    for segment in _split_shell_segments(command):
+        if not AUDIT_MARKDOWN_PATH_RE.search(segment):
+            continue
+        # Redirections/copy-style writes are never lifecycle CLI behavior, even
+        # when a bundled CLI invocation appears earlier in the same segment.
+        if INDIRECT_AUDIT_WRITE_RE.search(segment):
+            return True
+        if tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(segment):
+            return True
+        # The lifecycle CLI legitimately contains --status PASS/... plus audit
+        # paths in evidence arguments. Allow that one segment, but keep checking
+        # every sibling command in a chain or pipeline.
+        if _is_bundled_audit_cli_segment(segment):
+            continue
+        if DIRECT_MUTATOR_RE.search(segment):
+            return True
+    return False
 
 
 def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
