@@ -1,0 +1,20 @@
+{
+  "name": "artur-plugins",
+  "interface": {
+    "displayName": "Artur Plugins"
+  },
+  "plugins": [
+    {
+      "name": "system-architect",
+      "source": {
+        "source": "local",
+        "path": "./plugins/system-architect"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
