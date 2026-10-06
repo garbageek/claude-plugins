@@ -7,11 +7,11 @@ Show current audit workflow status.
 Run:
 
 ```bash
-audit init
-audit doctor
-audit summary
-audit next --for resolution --json
-audit next --for verification --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for verification --json
 ```
 
 Summarize only the actionable queue and any doctor findings.

@@ -6,6 +6,8 @@ tags: [audit, discovery, ticket, evidence, workflow]
 
 # Audit Discovery
 
+Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI only as fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" <command> ...`.
+
 Purpose: convert concrete findings into audit tickets. The CLI/MCP runtime is the source of truth; Markdown files are the human-readable record.
 
 ## First move from empty context
@@ -13,12 +15,12 @@ Purpose: convert concrete findings into audit tickets. The CLI/MCP runtime is th
 Prefer MCP tools when available. CLI fallback:
 
 ```bash
-audit init
-audit doctor
-audit summary
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
 ```
 
-If `audit/` does not exist, that is normal. Run `audit init`; do not create the structure by hand.
+If `audit/` does not exist, that is normal. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init`; do not create the structure by hand.
 
 ## Modes
 
@@ -33,20 +35,20 @@ If `audit/` does not exist, that is normal. Run `audit init`; do not create the 
 Incomplete finding:
 
 ```bash
-audit create BUG --title "parse failure on null input" --severity high --module src/parser.py
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" create BUG --title "parse failure on null input" --severity high --module src/parser.py
 ```
 
 Evidence-ready ticket:
 
 ```bash
-audit create BUG   --title "parse failure on null input"   --severity high   --module src/parser.py   --description "Parser crashes when payload.user is null."   --evidence "src/parser.py:42 dereferences payload['user']['id'] without a guard"   --acceptance-criterion "Null user payload returns a typed validation error"   --suggested-verification "Reproduce null-user payload and verify typed validation error"   --open   --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" create BUG   --title "parse failure on null input"   --severity high   --module src/parser.py   --description "Parser crashes when payload.user is null."   --evidence "src/parser.py:42 dereferences payload['user']['id'] without a guard"   --acceptance-criterion "Null user payload returns a typed validation error"   --suggested-verification "Reproduce null-user payload and verify typed validation error"   --open   --json
 ```
 
 ## Allowed actions
 
 - initialize the workflow;
 - create `DRAFT` or `OPEN` tickets;
-- promote evidence-ready `DRAFT` tickets to `OPEN` using `audit open ... --as audit-discovery`;
+- promote evidence-ready `DRAFT` tickets to `OPEN` using `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" open ... --as audit-discovery`;
 - add concrete evidence, acceptance criteria, module/line references, and suggested verification.
 
 ## Forbidden actions

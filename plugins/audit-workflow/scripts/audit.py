@@ -20,7 +20,7 @@ Common commands:
     export [--json]
     baseline create|compare [--tag TAG]
 
-Run from the project root directory, or pass --root /path/to/project. In the plugin, this executable is available as `audit` from Bash while the plugin is enabled.
+Run from the project root directory, or pass --root /path/to/project. In the plugin, MCP tools are preferred; the direct fallback is `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/audit.py ...`.
 """
 
 from __future__ import annotations
@@ -39,81 +39,68 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
-# Keep this script directly copyable. When audit_lib.py is present we import the
-# shared constants/helpers; otherwise the CLI falls back to the same definitions.
-try:  # pragma: no cover - fallback exists for local single-file copy mode
-    from audit_lib import (  # type: ignore
-        ACTOR_ROLES,
-        ALLOWED_TRANSITIONS,
-        VALID_CATEGORIES,
-        VALID_SEVERITIES,
-        VALID_STATUSES,
-        VERIFICATION_STATUSES,
-        _field,
-        allowed_statuses,
-        can_set_status,
-        parse_ticket_filename,
-    )
-except ModuleNotFoundError:  # pragma: no cover
-    VALID_CATEGORIES = {
-        "BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY",
-    }
-    VALID_SEVERITIES = {"critical", "high", "medium", "low"}
-    VALID_STATUSES = {
-        "DRAFT", "OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL",
-        "REGRESS", "BLOCKED", "WONTFIX", "INVALID",
-    }
-    VERIFICATION_STATUSES = {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"}
-    ACTOR_ROLES: dict[str, set[str]] = {
-        "audit-discovery": {"DRAFT", "OPEN"},
-        "audit-resolution": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX"},
-        "audit-verification": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
-    }
-    ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-        "DRAFT": {"OPEN", "INVALID"},
-        "OPEN": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX", "INVALID"},
-        "READY_FOR_VERIFICATION": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
-        "PARTIAL": {"READY_FOR_VERIFICATION", "PASS", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
-        "FAIL": {"READY_FOR_VERIFICATION", "WONTFIX", "INVALID", "BLOCKED"},
-        "REGRESS": {"READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
-        "BLOCKED": {"OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "WONTFIX", "INVALID"},
-        "PASS": {"REGRESS"},
-        "WONTFIX": {"OPEN"},
-        "INVALID": {"OPEN"},
-    }
+# Canonical workflow model. Keep lifecycle constants and parsers here so CLI,
+# hooks, and MCP all execute one runtime implementation instead of mirrored
+# fallback copies.
+VALID_CATEGORIES = {
+    "BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY",
+}
+VALID_SEVERITIES = {"critical", "high", "medium", "low"}
+VALID_STATUSES = {
+    "DRAFT", "OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL",
+    "REGRESS", "BLOCKED", "WONTFIX", "INVALID",
+}
+VERIFICATION_STATUSES = {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"}
+ACTOR_ROLES: dict[str, set[str]] = {
+    "audit-discovery": {"DRAFT", "OPEN"},
+    "audit-resolution": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX"},
+    "audit-verification": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
+}
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    "DRAFT": {"OPEN", "INVALID"},
+    "OPEN": {"READY_FOR_VERIFICATION", "BLOCKED", "WONTFIX", "INVALID"},
+    "READY_FOR_VERIFICATION": {"PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"},
+    "PARTIAL": {"READY_FOR_VERIFICATION", "PASS", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
+    "FAIL": {"READY_FOR_VERIFICATION", "WONTFIX", "INVALID", "BLOCKED"},
+    "REGRESS": {"READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "BLOCKED", "WONTFIX", "INVALID"},
+    "BLOCKED": {"OPEN", "READY_FOR_VERIFICATION", "PASS", "PARTIAL", "FAIL", "WONTFIX", "INVALID"},
+    "PASS": {"REGRESS"},
+    "WONTFIX": {"OPEN"},
+    "INVALID": {"OPEN"},
+}
 
-    CATEGORY_PATTERN = "|".join(sorted(map(re.escape, VALID_CATEGORIES), key=len, reverse=True))
+CATEGORY_PATTERN = "|".join(sorted(map(re.escape, VALID_CATEGORIES), key=len, reverse=True))
 
-    def _field(text: str, label: str) -> str:
-        pattern_strict = rf"\*\*{re.escape(label)}:\*\*\s+`([^`\n]*)`"
-        m = re.search(pattern_strict, text)
-        if m:
-            return m.group(1).strip()
-        pattern_fallback = rf"\*\*{re.escape(label)}:\*\*\s+([^\n]+)"
-        m = re.search(pattern_fallback, text)
-        if not m:
-            return ""
-        value = m.group(1).strip()
-        if value == "``":
-            return ""
-        if value.startswith("`") and value.endswith("`"):
-            return value[1:-1].strip()
-        return value
+def _field(text: str, label: str) -> str:
+    pattern_strict = rf"\*\*{re.escape(label)}:\*\*\s+`([^`\n]*)`"
+    m = re.search(pattern_strict, text)
+    if m:
+        return m.group(1).strip()
+    pattern_fallback = rf"\*\*{re.escape(label)}:\*\*\s+([^\n]+)"
+    m = re.search(pattern_fallback, text)
+    if not m:
+        return ""
+    value = m.group(1).strip()
+    if value == "``":
+        return ""
+    if value.startswith("`") and value.endswith("`"):
+        return value[1:-1].strip()
+    return value
 
-    def parse_ticket_filename(name: str) -> tuple[Optional[int], str, str]:
-        num_match = re.match(r"^(\d+)", name)
-        num = int(num_match.group(1)) if num_match else None
-        m = re.match(rf"^(\d+)-({CATEGORY_PATTERN})-(.+)\.md$", name)
-        category = m.group(2) if m else "?"
-        slug = m.group(3) if m else name
-        return num, category, slug
+def parse_ticket_filename(name: str) -> tuple[Optional[int], str, str]:
+    num_match = re.match(r"^(\d+)", name)
+    num = int(num_match.group(1)) if num_match else None
+    m = re.match(rf"^(\d+)-({CATEGORY_PATTERN})-(.+)\.md$", name)
+    category = m.group(2) if m else "?"
+    slug = m.group(3) if m else name
+    return num, category, slug
 
-    def allowed_statuses(actor: str) -> set[str] | None:
-        return ACTOR_ROLES.get(actor)
+def allowed_statuses(actor: str) -> set[str] | None:
+    return ACTOR_ROLES.get(actor)
 
-    def can_set_status(actor: str, status: str) -> bool:
-        allowed = allowed_statuses(actor)
-        return allowed is not None and status.upper() in allowed
+def can_set_status(actor: str, status: str) -> bool:
+    allowed = allowed_statuses(actor)
+    return allowed is not None and status.upper() in allowed
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -166,7 +153,10 @@ TRIAGE_DIR = ROOT / "audit" / "triage"
 CREATE_LOCK = ROOT / "audit" / ".create.lock"
 
 _STUB_RE = re.compile(r"^\d+\.md$")
-_PLACEHOLDER_RE = re.compile(r"<!--.*?-->|\bTODO\b|\{[^{}]+\}", re.IGNORECASE | re.DOTALL)
+_PLACEHOLDER_RE = re.compile(
+    r"<!--.*?-->|\bTODO\b|\{(?![^{}]*(?::|\"|')[^{}]*\})[^{}]+\}",
+    re.IGNORECASE | re.DOTALL,
+)
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "?": 4, "unknown": 4}
 _PLEVEL_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 4, "?": 4}
 _PASS_LIKE = {"PASS", "WONTFIX", "INVALID"}
@@ -236,6 +226,10 @@ def _parse_id(raw: str) -> int:
         raise AuditError(f"invalid ticket id: {raw}", 2) from exc
 
 
+def _canonical_ticket_id(raw: str) -> str:
+    return f"{_parse_id(str(raw).strip()):03d}"
+
+
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title.lower())
     slug = re.sub(r"[\s_]+", "-", slug).strip("-")[:60]
@@ -293,12 +287,8 @@ DRAFT -> OPEN -> READY_FOR_VERIFICATION -> PASS/PARTIAL/FAIL/REGRESS/BLOCKED/WON
 
 ## First commands
 
-```bash
-audit doctor
-audit summary
-audit next --for resolution
-audit next --for verification
-```
+Prefer the plugin MCP tools (`audit_doctor`, `audit_summary`, `audit_next`).
+For direct CLI fallback, run `python3 /path/to/audit-workflow/scripts/audit.py <command> ...`.
 
 ## Roles
 
@@ -308,21 +298,18 @@ audit next --for verification
 
 ## Source of truth
 
-Use `audit export --json` for automation. Markdown files are human-readable records, but status changes should go through the CLI.
+Use the `audit_export` MCP tool for automation, or `python3 /path/to/audit-workflow/scripts/audit.py export --json` as fallback. Markdown files are human-readable records, but lifecycle state changes should go through MCP or the bundled CLI runtime.
 """
 
 
 def _triage_readme_text() -> str:
     return """# Audit Triage
 
-Triage metadata is executable: `audit next --for resolution` consumes priority and dependency data.
+Triage metadata is executable: `audit_next(for_role="resolution")` or CLI `next --for resolution` consumes priority and dependency data.
 
 Use:
 
-```bash
-audit triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
-audit deps add 001 --depends-on 003
-```
+Use MCP `audit_triage_set` and `audit_dependency_add`, or the corresponding CLI fallback commands.
 
 Dependency semantics: `003 blocks 001`, so ticket 001 waits until ticket 003 is resolved.
 """
@@ -342,9 +329,7 @@ Meaning: ticket 001 depends on ticket 003.
 
 The equivalent CLI command is:
 
-```bash
-audit deps add 001 --depends-on 003
-```
+Use MCP `audit_dependency_add`, or CLI `deps add 001 --depends-on 003`.
 """
 
 
@@ -548,12 +533,26 @@ def _acceptance_criteria(ticket_text: str) -> dict[str, str]:
     return criteria
 
 
+_CRITERION_RESULT_RE = re.compile(
+    r"^\s*(?:-\s*\[[ xX]\]\s*)?(AC\d+)\s*[:.-]\s*(pass|fail|partial|blocked|regress)\b",
+    re.IGNORECASE,
+)
+
+
+def _criterion_result(raw: str) -> tuple[str, str] | None:
+    match = _CRITERION_RESULT_RE.match(raw.strip())
+    if not match:
+        return None
+    return match.group(1).upper(), match.group(2).lower()
+
+
 def _criteria_result_ids(text: str) -> set[str]:
     content = _section_content(text, "## Criteria Results") or _section_content(text, "## Verification Checklist")
     ids: set[str] = set()
     for line in content.splitlines():
-        if re.search(r"\bpass\b", line, flags=re.IGNORECASE) or "[x]" in line.lower():
-            ids.update(m.group(1).upper() for m in re.finditer(r"\b(AC\d+)\b", line, flags=re.IGNORECASE))
+        parsed = _criterion_result(line)
+        if parsed and parsed[1] == "pass":
+            ids.add(parsed[0])
     return ids
 
 
@@ -722,6 +721,21 @@ def load_records() -> list[dict[str, Any]]:
         }
         records.append(record)
 
+    # Dependency edges are symmetric. Ticket files written by 1.0.x may carry
+    # only one side (for example `Blocks` on the blocker), so merge both
+    # directions before scheduling or exporting.
+    by_id = {r["id"]: r for r in records}
+    for r in records:
+        for blocked in r["blocks"]:
+            target = by_id.get(blocked)
+            if target is not None and r["id"] not in target["depends_on"]:
+                target["depends_on"] = sorted(set(target["depends_on"]) | {r["id"]})
+    for r in records:
+        for dep in r["depends_on"]:
+            target = by_id.get(dep)
+            if target is not None and r["id"] not in target["blocks"]:
+                target["blocks"] = sorted(set(target["blocks"]) | {r["id"]})
+
     ticket_nums = {r["num"] for r in records if r["num"] is not None}
     for v in verif_index.values():
         if v["num"] not in ticket_nums:
@@ -788,13 +802,17 @@ def _pass_ready(ticket_path: Path, verif_text: str, criteria_args: Sequence[str]
     missing: list[str] = []
     if not criteria:
         missing.append("ticket has no non-placeholder acceptance criteria")
-    provided_ids: set[str] = set()
+    provided_results: dict[str, str] = {}
     for raw in criteria_args:
-        provided_ids.update(m.group(1).upper() for m in re.finditer(r"\b(AC\d+)\b", raw, flags=re.IGNORECASE))
+        parsed = _criterion_result(raw)
+        if parsed:
+            provided_results[parsed[0]] = parsed[1]
     existing_ids = _criteria_result_ids(verif_text)
-    covered = provided_ids | existing_ids
     for cid in criteria:
-        if cid not in covered:
+        result = provided_results.get(cid)
+        if result is not None and result != "pass":
+            missing.append(f"{cid} result is {result}, not pass")
+        elif result != "pass" and cid not in existing_ids:
             missing.append(f"missing passing evidence for {cid}")
     if not _has_nonplaceholder_content(verif_text, "## Evidence") and not criteria_args:
         missing.append("verification evidence is empty")
@@ -1054,6 +1072,15 @@ def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
 
     with _create_lock_cm():
         next_num = _next_ticket_number()
+        source_id = f"{next_num:03d}"
+        dep_ids = {_canonical_ticket_id(x) for x in (args.depends_on or [])}
+        block_ids = {_canonical_ticket_id(x) for x in (args.blocks or [])}
+        if source_id in dep_ids or source_id in block_ids:
+            raise AuditError("a ticket cannot depend on or block itself", 2)
+        for ref in sorted(dep_ids | block_ids):
+            if not _ticket_for(_parse_id(ref)):
+                raise AuditError(f"ticket {ref} not found", 1)
+
         ticket_name = f"{next_num:03d}-{cat}-{slug}.md"
         verif_name = ticket_name
         ticket_path = TICKETS_DIR / ticket_name
@@ -1063,6 +1090,13 @@ def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
         ticket_path.write_text(ticket_body, encoding="utf-8")
         try:
             verif_path.write_text(_verification_text(next_num, cat, sev, slug, status), encoding="utf-8")
+            if dep_ids or block_ids:
+                _mutate_dependencies(
+                    source_id,
+                    depends_on=sorted(dep_ids),
+                    blocks=sorted(block_ids),
+                    remove=False,
+                )
         except Exception:
             ticket_path.unlink(missing_ok=True)
             verif_path.unlink(missing_ok=True)
@@ -1274,10 +1308,9 @@ def _apply_transition_to_file(
                 raw = raw.strip()
                 if not raw:
                     continue
-                if re.search(r"\bpass\b", raw, flags=re.IGNORECASE):
-                    lines.append(f"- [x] {raw}")
-                else:
-                    lines.append(f"- [x] {raw}")
+                parsed = _criterion_result(raw)
+                checked = bool(parsed and parsed[1] == "pass")
+                lines.append(f"- [{'x' if checked else ' '}] {raw}")
             if lines:
                 new = _append_to_section(new, "## Criteria Results", "\n".join(lines))
         if test:
@@ -1531,16 +1564,32 @@ def cmd_next(args: argparse.Namespace) -> None:
         print(f"({len(candidates) - 1} more ticket(s) in queue)")
 
 
-def cmd_doctor(args: argparse.Namespace) -> None:
+def _one_sided_dependency_edges() -> list[tuple[str, str]]:
+    """Return (blocker, blocked) edges recorded on only one of the two tickets."""
+    tickets: dict[str, dict[str, Any]] = {}
+    for p in _all_ticket_files():
+        t = parse_ticket(p)
+        if t["num"] is not None:
+            tickets.setdefault(t["id"], t)
+    edges: set[tuple[str, str]] = set()
+    for tid, t in tickets.items():
+        for blocked in t["blocks"]:
+            other = tickets.get(blocked)
+            if other is not None and tid not in other["depends_on"]:
+                edges.add((tid, blocked))
+        for blocker in t["depends_on"]:
+            other = tickets.get(blocker)
+            if other is not None and tid not in other["blocks"]:
+                edges.add((blocker, tid))
+    return sorted(edges)
+
+
+def _doctor_findings() -> tuple[list[str], list[str]]:
     issues: list[str] = []
     warnings: list[str] = []
     if not TICKETS_DIR.is_dir() or not VERIF_DIR.is_dir():
-        if args.fix:
-            result = _initialize_audit_tree(write_docs=True)
-            if result["created_dirs"] or result["created_files"]:
-                print("FIXED: initialized missing audit workflow directories/files")
-        else:
-            issues.append("Audit workflow is not initialized. Run: audit init")
+        issues.append("Audit workflow is not initialized. Use audit_init or the bundled CLI init command")
+        return issues, warnings
 
     ticket_paths = list(_all_ticket_files())
     verif_paths = list(_named_verif_files())
@@ -1566,10 +1615,6 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     for num, p in ticket_by_num.items():
         if num not in verif_by_num:
             issues.append(f"Ticket {num:03d} missing verification file: {p.name}")
-            if args.fix:
-                VERIF_DIR.mkdir(parents=True, exist_ok=True)
-                _write_stub_verification(VERIF_DIR / p.name, num, p)
-                print(f"FIXED: created verification stub for {num:03d}")
         elif verif_by_num[num].name != p.name:
             issues.append(f"Ticket/verification name mismatch {num:03d}: {p.name} vs {verif_by_num[num].name}")
 
@@ -1600,27 +1645,26 @@ def cmd_doctor(args: argparse.Namespace) -> None:
                 warnings.append(f"DRAFT ticket {p.name} is incomplete and excluded from resolution queue")
 
         if status == "READY_FOR_VERIFICATION":
-            text = p.read_text(encoding="utf-8", errors="replace")
+            vtext = p.read_text(encoding="utf-8", errors="replace")
             if not v.get("commit"):
                 issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty Fix Commit")
-            if not _has_nonplaceholder_content(text, "## Resolution Evidence") and not _has_nonplaceholder_content(text, "## Evidence"):
+            if not _has_nonplaceholder_content(vtext, "## Resolution Evidence") and not _has_nonplaceholder_content(vtext, "## Evidence"):
                 issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty resolution evidence")
-            if not _has_nonplaceholder_content(text, "## Test Verification"):
+            if not _has_nonplaceholder_content(vtext, "## Test Verification"):
                 issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty test verification")
         if status == "PASS":
-            text = p.read_text(encoding="utf-8", errors="replace")
+            vtext = p.read_text(encoding="utf-8", errors="replace")
             if ticket_path:
-                ok, missing = _pass_ready(ticket_path, text, [])
+                ok, missing = _pass_ready(ticket_path, vtext, [])
                 if not ok:
                     issues.append(f"PASS ticket {p.name} lacks required evidence: {'; '.join(missing)}")
             if not v.get("verified_commit"):
                 issues.append(f"PASS ticket {p.name} has empty Verified Commit")
         if status in {"WONTFIX", "INVALID", "BLOCKED"}:
-            text = p.read_text(encoding="utf-8", errors="replace")
-            if not _has_nonplaceholder_content(text, "## Verdict"):
+            vtext = p.read_text(encoding="utf-8", errors="replace")
+            if not _has_nonplaceholder_content(vtext, "## Verdict"):
                 issues.append(f"{status} ticket {p.name} lacks rationale in Verdict")
 
-    # Dependency checks.
     records = load_records()
     ids = {r["id"] for r in records}
     status_by_id = {r["id"]: r.get("status", "") for r in records}
@@ -1631,6 +1675,12 @@ def cmd_doctor(args: argparse.Namespace) -> None:
                 issues.append(f"Ticket {r['id']} depends on missing ticket {dep}")
             elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "INVALID"}:
                 issues.append(f"Ticket {r['id']} depends on non-usable ticket {dep} ({status_by_id.get(dep)})")
+
+    for blocker, blocked in _one_sided_dependency_edges():
+        warnings.append(
+            f"Dependency {blocker} blocks {blocked} is recorded on only one ticket; "
+            "scheduling uses it, `doctor --fix` writes the missing side"
+        )
 
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -1650,21 +1700,46 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
     for node in graph:
         visit(node, [])
+    return issues, warnings
 
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    if args.fix:
+        fixed: list[str] = []
+        if not TICKETS_DIR.is_dir() or not VERIF_DIR.is_dir():
+            result = _initialize_audit_tree(write_docs=True)
+            if result["created_dirs"] or result["created_files"]:
+                fixed.append("initialized missing audit workflow directories/files")
+        for p in list(_all_ticket_files()):
+            num = _ticket_num(p.name)
+            if num is not None and _verif_for(num, p) is None:
+                VERIF_DIR.mkdir(parents=True, exist_ok=True)
+                _write_stub_verification(VERIF_DIR / p.name, num, p)
+                fixed.append(f"created verification stub for {num:03d}")
+        edges = _one_sided_dependency_edges()
+        if edges:
+            with _create_lock_cm():
+                for blocker, blocked in edges:
+                    _mutate_dependencies(blocker, depends_on=[], blocks=[blocked], remove=False)
+                    fixed.append(f"recorded both sides of dependency {blocker} blocks {blocked}")
+        for item in fixed:
+            print(f"FIXED: {item}")
+
+    issues, warnings = _doctor_findings()
     if issues:
         print(f"Found {len(issues)} issue(s):")
         for issue in issues:
             print(f"  - {issue}")
         if warnings:
             print(f"\nWarnings ({len(warnings)}):")
-            for w in warnings:
-                print(f"  - {w}")
+            for warning in warnings:
+                print(f"  - {warning}")
         sys.exit(1)
     print("Audit directory is healthy.")
     if warnings:
         print(f"Warnings ({len(warnings)}):")
-        for w in warnings:
-            print(f"  - {w}")
+        for warning in warnings:
+            print(f"  - {warning}")
 
 
 def cmd_export(args: argparse.Namespace) -> None:
@@ -1860,20 +1935,69 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
     print(f"{num:03d}: triage metadata updated ({_rel(path)})")
 
 
-def cmd_deps_add(args: argparse.Namespace) -> None:
-    num = _parse_id(args.id)
-    path = _ticket_for(num)
-    if not path:
+def _dependency_state(path: Path) -> tuple[set[str], set[str], str]:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    return set(_split_ids(_field(content, "Depends On"))), set(_split_ids(_field(content, "Blocks"))), content
+
+
+def _write_dependency_state(path: Path, depends: set[str], blocks: set[str], content: str) -> None:
+    content = _replace_field(content, "Depends On", _join_ids(sorted(depends)))
+    content = _replace_field(content, "Blocks", _join_ids(sorted(blocks)))
+    path.write_text(content, encoding="utf-8")
+
+
+def _mutate_dependencies(ticket_id: str, *, depends_on: Sequence[str], blocks: Sequence[str], remove: bool) -> list[Path]:
+    num = _parse_id(ticket_id)
+    source_path = _ticket_for(num)
+    if not source_path:
         raise AuditError(f"ticket {num:03d} not found", 1)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    depends = set(_split_ids(_field(text, "Depends On")))
-    blocks = set(_split_ids(_field(text, "Blocks")))
-    depends.update(x.zfill(3) for x in (args.depends_on or []))
-    blocks.update(x.zfill(3) for x in (args.blocks or []))
-    text = _replace_field(text, "Depends On", _join_ids(sorted(depends)))
-    text = _replace_field(text, "Blocks", _join_ids(sorted(blocks)))
-    path.write_text(text, encoding="utf-8")
-    print(f"{num:03d}: dependencies updated ({_rel(path)})")
+    source_id = f"{num:03d}"
+    dep_ids = {_canonical_ticket_id(x) for x in depends_on}
+    block_ids = {_canonical_ticket_id(x) for x in blocks}
+    if source_id in dep_ids or source_id in block_ids:
+        raise AuditError("a ticket cannot depend on or block itself", 2)
+
+    refs: dict[str, Path] = {}
+    for ref in sorted(dep_ids | block_ids):
+        ref_path = _ticket_for(_parse_id(ref))
+        if not ref_path:
+            raise AuditError(f"ticket {ref} not found", 1)
+        refs[ref] = ref_path
+
+    paths = {source_id: source_path, **refs}
+    state: dict[str, tuple[set[str], set[str], str]] = {tid: _dependency_state(path) for tid, path in paths.items()}
+    source_depends, source_blocks, _ = state[source_id]
+    op = set.discard if remove else set.add
+
+    for dep in dep_ids:
+        op(source_depends, dep)
+        dep_depends, dep_blocks, _ = state[dep]
+        op(dep_blocks, source_id)
+    for blocked in block_ids:
+        op(source_blocks, blocked)
+        blocked_depends, blocked_blocks, _ = state[blocked]
+        op(blocked_depends, source_id)
+
+    for tid, path in paths.items():
+        depends, blocked, content = state[tid]
+        _write_dependency_state(path, depends, blocked, content)
+    return list(paths.values())
+
+
+def cmd_deps_add(args: argparse.Namespace) -> None:
+    if not args.depends_on and not args.blocks:
+        raise AuditError("deps add requires --depends-on and/or --blocks", 2)
+    with _create_lock_cm():
+        changed = _mutate_dependencies(args.id, depends_on=args.depends_on or [], blocks=args.blocks or [], remove=False)
+    print(f"{_parse_id(args.id):03d}: dependencies updated ({', '.join(_rel(p) for p in changed)})")
+
+
+def cmd_deps_remove(args: argparse.Namespace) -> None:
+    if not args.depends_on and not args.blocks:
+        raise AuditError("deps remove requires --depends-on and/or --blocks", 2)
+    with _create_lock_cm():
+        changed = _mutate_dependencies(args.id, depends_on=args.depends_on or [], blocks=args.blocks or [], remove=True)
+    print(f"{_parse_id(args.id):03d}: dependencies removed ({', '.join(_rel(p) for p in changed)})")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2021,6 +2145,10 @@ def build_parser() -> argparse.ArgumentParser:
     deps_add.add_argument("id")
     deps_add.add_argument("--depends-on", action="append")
     deps_add.add_argument("--blocks", action="append")
+    deps_remove = deps_sub.add_parser("remove", help="Remove dependency edges from a ticket")
+    deps_remove.add_argument("id")
+    deps_remove.add_argument("--depends-on", action="append")
+    deps_remove.add_argument("--blocks", action="append")
 
     return parser
 
@@ -2069,6 +2197,8 @@ def main() -> None:
             cmd_triage_set(args)
         elif args.command == "deps" and args.deps_command == "add":
             cmd_deps_add(args)
+        elif args.command == "deps" and args.deps_command == "remove":
+            cmd_deps_remove(args)
         else:
             parser.print_help()
             sys.exit(1)

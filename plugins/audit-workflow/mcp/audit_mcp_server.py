@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "audit-workflow"
-SERVER_VERSION = "1.0.0"
-PROTOCOL_VERSION = "2025-03-26"
+SERVER_VERSION = "1.1.1"
+# structuredContent in tool results is defined from 2025-06-18; older clients ignore it.
+PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2025-03-26"}
 
 
 def plugin_root() -> Path:
@@ -27,8 +29,8 @@ def default_root(args: dict[str, Any] | None = None) -> Path:
     return Path(value).expanduser().resolve() if value else Path.cwd().resolve()
 
 
-def audit_bin() -> Path:
-    return plugin_root() / "bin" / "audit"
+def audit_script() -> Path:
+    return plugin_root() / "scripts" / "audit.py"
 
 
 def respond(msg_id: Any, result: Any = None, error: dict[str, Any] | None = None) -> None:
@@ -44,7 +46,10 @@ def respond(msg_id: Any, result: Any = None, error: dict[str, Any] | None = None
 
 def tool_result(data: Any, *, is_error: bool = False) -> dict[str, Any]:
     text = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)
-    return {"content": [{"type": "text", "text": text}], "isError": is_error}
+    result: dict[str, Any] = {"content": [{"type": "text", "text": text}], "isError": is_error}
+    if isinstance(data, (dict, list)):
+        result["structuredContent"] = data
+    return result
 
 
 def audit_tool_result(data: dict[str, Any]) -> dict[str, Any]:
@@ -53,7 +58,7 @@ def audit_tool_result(data: dict[str, Any]) -> dict[str, Any]:
 
 def run_audit(args: dict[str, Any], *cmd: str, json_mode: bool = True) -> dict[str, Any]:
     root = default_root(args)
-    argv = [str(audit_bin()), "--root", str(root), *cmd]
+    argv = [sys.executable, str(audit_script()), "--root", str(root), *cmd]
     if json_mode and "--json" not in argv:
         argv.append("--json")
     try:
@@ -180,7 +185,11 @@ def repeated_arg(out: list[str], flag: str, values: Any) -> None:
 
 def tools() -> list[dict[str, Any]]:
     str_schema = {"type": "string"}
+    id_schema = {"type": "string", "pattern": r"^\d+$"}
     root_prop = {"root": {"type": "string", "description": "Project root. Defaults to CLAUDE_PROJECT_DIR or current directory."}}
+    category_schema = {"type": "string", "enum": ["BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY"]}
+    severity_schema = {"type": "string", "enum": ["critical", "high", "medium", "low"]}
+    verification_status_schema = {"type": "string", "enum": ["PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"]}
     return [
         {
             "name": "audit_init",
@@ -200,22 +209,47 @@ def tools() -> list[dict[str, Any]]:
         {
             "name": "audit_next",
             "description": "Return the next ticket for resolution or verification.",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "for_role": {"type": "string", "enum": ["resolution", "verification"]}, "category": str_schema, "severity": str_schema}, "required": ["for_role"], "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "for_role": {"type": "string", "enum": ["resolution", "verification"]}, "category": category_schema, "severity": severity_schema}, "required": ["for_role"], "additionalProperties": False},
+        },
+        {
+            "name": "audit_show",
+            "description": "Show the ticket and verification record for one or more IDs.",
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "ids": {"type": "array", "items": id_schema}}, "additionalProperties": False},
         },
         {
             "name": "audit_create",
             "description": "Initialize the audit workflow when needed, then create a DRAFT/OPEN audit ticket from concrete evidence.",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "category": str_schema, "title": str_schema, "severity": str_schema, "module": str_schema, "description": str_schema, "evidence": {"type": "array", "items": str_schema}, "acceptance_criteria": {"type": "array", "items": str_schema}, "suggested_verification": str_schema, "open": {"type": "boolean"}}, "required": ["category", "title", "severity"], "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "category": category_schema, "title": str_schema, "severity": severity_schema, "module": str_schema, "lines": str_schema, "source": str_schema, "depends_on": {"type": "array", "items": id_schema}, "blocks": {"type": "array", "items": id_schema}, "description": str_schema, "expected": str_schema, "actual": str_schema, "evidence": {"type": "array", "items": str_schema}, "recommendation": str_schema, "acceptance_criteria": {"type": "array", "items": str_schema}, "suggested_verification": str_schema, "open": {"type": "boolean"}}, "required": ["category", "title", "severity"], "additionalProperties": False},
+        },
+        {
+            "name": "audit_open",
+            "description": "Promote evidence-ready DRAFT ticket(s) to OPEN as audit-discovery.",
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "ids": {"type": "array", "items": id_schema}, "verdict": str_schema}, "additionalProperties": False},
         },
         {
             "name": "audit_resolve",
             "description": "Move ticket(s) to READY_FOR_VERIFICATION with resolution evidence.",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "id": str_schema, "ids": {"type": "array", "items": str_schema}, "fix_commit": str_schema, "evidence": {"type": "array", "items": str_schema}, "test": str_schema, "changed": {"type": "array", "items": str_schema}, "verdict": str_schema}, "required": ["fix_commit", "evidence", "test"], "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "ids": {"type": "array", "items": id_schema}, "fix_commit": str_schema, "evidence": {"type": "array", "items": str_schema}, "test": str_schema, "changed": {"type": "array", "items": str_schema}, "verdict": str_schema}, "required": ["fix_commit", "evidence", "test"], "additionalProperties": False},
         },
         {
             "name": "audit_verify",
             "description": "Write independent verification verdict for ticket(s).",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "id": str_schema, "ids": {"type": "array", "items": str_schema}, "status": str_schema, "verified_commit": str_schema, "criteria": {"type": "array", "items": str_schema}, "evidence": {"type": "array", "items": str_schema}, "test": str_schema, "verdict": str_schema, "reason": str_schema}, "required": ["status"], "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "ids": {"type": "array", "items": id_schema}, "status": verification_status_schema, "verified_commit": str_schema, "criteria": {"type": "array", "items": str_schema}, "evidence": {"type": "array", "items": str_schema}, "test": str_schema, "verdict": str_schema, "reason": str_schema}, "required": ["status"], "additionalProperties": False},
+        },
+        {
+            "name": "audit_triage_set",
+            "description": "Set executable triage metadata for one ticket.",
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "impact": {"type": "integer", "minimum": 1, "maximum": 5}, "effort": {"type": "integer", "minimum": 1, "maximum": 5}, "p_level": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]}, "decision": {"type": "string", "enum": ["FIX", "DEFER", "WONTFIX", "DUPLICATE"]}, "phase": str_schema}, "required": ["id"], "additionalProperties": False},
+        },
+        {
+            "name": "audit_dependency_add",
+            "description": "Add canonical dependency edges and update both sides under the audit mutation lock.",
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "depends_on": {"type": "array", "items": id_schema}, "blocks": {"type": "array", "items": id_schema}}, "required": ["id"], "additionalProperties": False},
+        },
+        {
+            "name": "audit_dependency_remove",
+            "description": "Remove canonical dependency edges and update both sides under the audit mutation lock.",
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "depends_on": {"type": "array", "items": id_schema}, "blocks": {"type": "array", "items": id_schema}}, "required": ["id"], "additionalProperties": False},
         },
         {
             "name": "audit_export",
@@ -223,6 +257,10 @@ def tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": root_prop, "additionalProperties": False},
         },
     ]
+
+
+def _ids(args: dict[str, Any]) -> list[str]:
+    return arr(args.get("ids")) or arr(args.get("id"))
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -237,14 +275,26 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         optional_arg(cmd, "--category", args.get("category"))
         optional_arg(cmd, "--severity", args.get("severity"))
         return audit_tool_result(run_audit(args, *cmd))
+    if name == "audit_show":
+        ids = _ids(args)
+        if not ids:
+            return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
+        return audit_tool_result(run_audit(args, "show", *ids, json_mode=False))
     if name == "audit_create":
         init_result = run_audit(args, "init")
         if not init_result.get("ok"):
             return audit_tool_result({"ok": False, "stage": "init", "init": init_result})
         cmd = ["create", str(args["category"]), "--title", str(args["title"]), "--severity", str(args["severity"])]
         optional_arg(cmd, "--module", args.get("module"))
+        optional_arg(cmd, "--lines", args.get("lines"))
+        optional_arg(cmd, "--source", args.get("source"))
+        repeated_arg(cmd, "--depends-on", args.get("depends_on"))
+        repeated_arg(cmd, "--blocks", args.get("blocks"))
         optional_arg(cmd, "--description", args.get("description"))
+        optional_arg(cmd, "--expected", args.get("expected"))
+        optional_arg(cmd, "--actual", args.get("actual"))
         repeated_arg(cmd, "--evidence", args.get("evidence"))
+        optional_arg(cmd, "--recommendation", args.get("recommendation"))
         repeated_arg(cmd, "--acceptance-criterion", args.get("acceptance_criteria"))
         optional_arg(cmd, "--suggested-verification", args.get("suggested_verification"))
         if args.get("open"):
@@ -256,15 +306,26 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             "initialized": init_result,
             "created": create_result,
         })
+    if name == "audit_open":
+        ids = _ids(args)
+        if not ids:
+            return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
+        cmd = ["open", *ids, "--as", "audit-discovery"]
+        optional_arg(cmd, "--verdict", args.get("verdict"))
+        return audit_tool_result(run_audit(args, *cmd))
     if name == "audit_resolve":
-        ids = arr(args.get("ids")) or arr(args.get("id"))
+        ids = _ids(args)
+        if not ids:
+            return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
         cmd = ["resolve", *ids, "--fix-commit", str(args["fix_commit"]), "--test", str(args["test"]), "--as", "audit-resolution"]
         repeated_arg(cmd, "--evidence", args.get("evidence"))
         repeated_arg(cmd, "--changed", args.get("changed"))
         optional_arg(cmd, "--verdict", args.get("verdict"))
         return audit_tool_result(run_audit(args, *cmd))
     if name == "audit_verify":
-        ids = arr(args.get("ids")) or arr(args.get("id"))
+        ids = _ids(args)
+        if not ids:
+            return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
         cmd = ["verify", *ids, "--status", str(args["status"]), "--as", "audit-verification"]
         optional_arg(cmd, "--verified-commit", args.get("verified_commit"))
         repeated_arg(cmd, "--criterion", args.get("criteria"))
@@ -273,6 +334,20 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         optional_arg(cmd, "--verdict", args.get("verdict"))
         optional_arg(cmd, "--reason", args.get("reason"))
         return audit_tool_result(run_audit(args, *cmd))
+    if name == "audit_triage_set":
+        cmd = ["triage", "set", str(args["id"])]
+        optional_arg(cmd, "--impact", args.get("impact"))
+        optional_arg(cmd, "--effort", args.get("effort"))
+        optional_arg(cmd, "--p-level", args.get("p_level"))
+        optional_arg(cmd, "--decision", args.get("decision"))
+        optional_arg(cmd, "--phase", args.get("phase"))
+        return audit_tool_result(run_audit(args, *cmd, json_mode=False))
+    if name in {"audit_dependency_add", "audit_dependency_remove"}:
+        action = "add" if name.endswith("_add") else "remove"
+        cmd = ["deps", action, str(args["id"])]
+        repeated_arg(cmd, "--depends-on", args.get("depends_on"))
+        repeated_arg(cmd, "--blocks", args.get("blocks"))
+        return audit_tool_result(run_audit(args, *cmd, json_mode=False))
     if name == "audit_export":
         return audit_tool_result(run_audit(args, "export"))
     return tool_result({"ok": False, "error": f"unknown tool: {name}"}, is_error=True)
@@ -285,8 +360,9 @@ def handle(msg: dict[str, Any]) -> None:
     try:
         if method == "initialize":
             client_version = params.get("protocolVersion") if isinstance(params, dict) else None
+            selected_version = client_version if client_version in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
             respond(msg_id, {
-                "protocolVersion": client_version or PROTOCOL_VERSION,
+                "protocolVersion": selected_version,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
             })
