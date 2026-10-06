@@ -5,7 +5,8 @@
 - Removed the top-level `bin/` directory and moved the canonical CLI/runtime to `scripts/audit.py` for claude.ai/Cowork marketplace compatibility.
 - Collapsed duplicated CLI fallback constants, the `audit_lib` shim, the process-global `re.compile` monkeypatch, and the parity checker into one runtime source of truth.
 - Fixed PASS gating so only explicit `ACn: pass` results satisfy acceptance criteria; non-pass criteria are stored unchecked.
-- Closed chained shell-command lifecycle bypasses and added PowerShell mutation recognition.
+- Closed chained shell-command lifecycle bypasses, allowed legitimate bundled CLI lifecycle calls without false positives, and added PowerShell mutation recognition.
+- Canonicalized dependency IDs before self-reference checks so leading-zero aliases cannot create self-edges.
 - Restored source editing capability to the `audit-resolution` agent.
 - Made `doctor --fix` report and exit from a fresh post-fix diagnosis.
 - Made dependency edges canonical and bidirectional for add/remove operations.
