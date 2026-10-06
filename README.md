@@ -49,5 +49,7 @@ python3 -m py_compile \
 
 Current vendor documentation:
 
-- Claude plugins: https://code.claude.com/docs/en/plugins-reference
+- Claude Code plugin development: https://code.claude.com/docs/en/plugins/create
+- Claude Code plugin installation and marketplaces: https://code.claude.com/docs/en/discover-plugins
+- Claude Code plugin manifest reference: https://code.claude.com/docs/en/plugins-reference
 - OpenAI plugins: https://developers.openai.com/plugins/build/plugins
