@@ -226,6 +226,10 @@ def _parse_id(raw: str) -> int:
         raise AuditError(f"invalid ticket id: {raw}", 2) from exc
 
 
+def _canonical_ticket_id(raw: str) -> str:
+    return f"{_parse_id(str(raw).strip()):03d}"
+
+
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title.lower())
     slug = re.sub(r"[\s_]+", "-", slug).strip("-")[:60]
@@ -1054,8 +1058,8 @@ def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
     with _create_lock_cm():
         next_num = _next_ticket_number()
         source_id = f"{next_num:03d}"
-        dep_ids = {str(x).zfill(3) for x in (args.depends_on or [])}
-        block_ids = {str(x).zfill(3) for x in (args.blocks or [])}
+        dep_ids = {_canonical_ticket_id(x) for x in (args.depends_on or [])}
+        block_ids = {_canonical_ticket_id(x) for x in (args.blocks or [])}
         if source_id in dep_ids or source_id in block_ids:
             raise AuditError("a ticket cannot depend on or block itself", 2)
         for ref in sorted(dep_ids | block_ids):
@@ -1901,8 +1905,8 @@ def _mutate_dependencies(ticket_id: str, *, depends_on: Sequence[str], blocks: S
     if not source_path:
         raise AuditError(f"ticket {num:03d} not found", 1)
     source_id = f"{num:03d}"
-    dep_ids = {str(x).zfill(3) for x in depends_on}
-    block_ids = {str(x).zfill(3) for x in blocks}
+    dep_ids = {_canonical_ticket_id(x) for x in depends_on}
+    block_ids = {_canonical_ticket_id(x) for x in blocks}
     if source_id in dep_ids or source_id in block_ids:
         raise AuditError("a ticket cannot depend on or block itself", 2)
 
