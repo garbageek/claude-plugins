@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0
+
+- Added an independent, scope-bounded review pass and explicit checks against redefining product intent or treating unfamiliar mechanisms as unnecessary.
+- Expanded relevant failure-path checks and added a final evidence/coverage self-check. Review stays read-only; the audit runtime, lifecycle roles, hooks, and MCP integration are unchanged.
+
+## 1.2.0
+
+- Added read-only `deep-review` with click-path, existing-test-quality, and operator-surface lenses; ticketization remains an explicit canonical-runtime handoff.
+- Added feature-scattering analysis with scoped static signals, bounded Git co-change, and explicit coverage/unavailable-history reporting.
+- Added one shared resolution/verification proof guide, including activation and running-instance evidence.
+- Preserved the lifecycle runtime, actors, commands, agents, hooks, MCP server, categories, and exports. This content expansion does not add Codex runtime support.
+
 ## 1.1.1
 
 - `next`, `export` and `doctor` treat a dependency recorded on only one ticket (as 1.0.x `deps add N --blocks M` wrote it) as a full edge. `doctor` warns about such edges and `doctor --fix` writes the missing side.

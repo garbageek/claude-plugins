@@ -29,7 +29,11 @@ jobs:
             plugins/audit-workflow/scripts/audit.py \
             plugins/audit-workflow/hooks/audit_guard.py \
             plugins/audit-workflow/hooks/plugin_root.py \
-            plugins/audit-workflow/mcp/audit_mcp_server.py
+            plugins/audit-workflow/mcp/audit_mcp_server.py \
+            plugins/audit-workflow/scripts/scatter_scan.py \
+            plugins/codebase-docs/skills/code-to-prd/scripts/codebase_analyzer.py \
+            plugins/codebase-docs/skills/code-to-prd/scripts/prd_scaffolder.py
+          python -m compileall -q plugins/codebase-docs/skills/local-wiki/scripts
 
       - name: Validate plugin layout
         run: |

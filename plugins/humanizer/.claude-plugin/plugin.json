@@ -1,0 +1,17 @@
+{
+  "name": "humanizer",
+  "version": "0.1.0",
+  "description": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "displayName": "Humanizer",
+  "keywords": [
+    "writing",
+    "editing",
+    "technical-writing",
+    "prose",
+    "humanizer"
+  ]
+}

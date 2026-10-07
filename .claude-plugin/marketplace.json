@@ -5,21 +5,50 @@
     "email": "arthur.kulik@icloud.com"
   },
   "metadata": {
-    "description": "Engineering plugin marketplace for governed audit workflows and portable architecture skills.",
-    "version": "1.1.1"
+    "description": "Evidence-led audit, architecture, prompts, prose editing, human runbooks, source-backed documentation, and repository/Copilot review instructions."
   },
   "plugins": [
     {
       "name": "audit-workflow",
       "source": "./plugins/audit-workflow",
-      "description": "Evidence-first governed audit workflow with discovery, triage, resolution, and independent verification.",
+      "description": "Evidence-first audit lifecycle with read-only deep review, feature-scattering analysis, shared fix proof, independent verification, hooks, and MCP tools.",
       "category": "development"
     },
     {
       "name": "system-architect",
-      "description": "Turns software ideas and existing designs into lean, implementation-ready architecture SPECs, reviews, and design decisions.",
+      "description": "Implementation-ready architecture SPECs, reviews, design decisions, optional planning profiles, and evidence-based project recovery.",
       "source": "./plugins/system-architect",
       "category": "development"
+    },
+    {
+      "name": "prompt-design",
+      "source": "./plugins/prompt-design",
+      "description": "Create, rewrite, diagnose, adapt, and evaluate usable prompts, including source-backed service-to-prompt translation.",
+      "category": "development"
+    },
+    {
+      "name": "human-runbooks",
+      "source": "./plugins/human-runbooks",
+      "description": "Draft, update, and resume human-executed procedures with explicit actions, observations, retry decisions, and final validation.",
+      "category": "productivity"
+    },
+    {
+      "name": "codebase-docs",
+      "source": "./plugins/codebase-docs",
+      "description": "Document implemented systems through source-backed PRDs and local wikis, with explicit static extraction limits and non-destructive output handling.",
+      "category": "development"
+    },
+    {
+      "name": "repo-instructions",
+      "source": "./plugins/repo-instructions",
+      "description": "Create and review scoped Claude/Codex repository instructions, and design repository-specific GitHub Copilot Code Review customization from source and review history.",
+      "category": "development"
+    },
+    {
+      "name": "humanizer",
+      "source": "./plugins/humanizer",
+      "description": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice.",
+      "category": "productivity"
     }
   ]
 }

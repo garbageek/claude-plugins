@@ -1,0 +1,38 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "humanizer",
+  "version": "0.1.0",
+  "description": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "keywords": [
+    "writing",
+    "editing",
+    "technical-writing",
+    "prose",
+    "humanizer"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Humanizer",
+        "shortDescription": "Natural prose without changing meaning",
+        "longDescription": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice. Detect, rewrite, or edit only when prose quality is requested. Preserve uncertainty, citations, code, identifiers, numbers, and the sender's authority and commitments. Do not infer authorship from style or optimize detector scores.",
+        "developerName": "Artur Kulik",
+        "category": "Productivity",
+        "capabilities": [
+          "Prose review",
+          "Meaning-preserving rewriting",
+          "Technical writing"
+        ],
+        "defaultPrompt": [
+          "Review this text for formulaic prose without rewriting it.",
+          "Rewrite this PR description naturally while preserving all technical claims and uncertainty.",
+          "Edit this message to match the supplied writing samples without expanding my commitments."
+        ]
+      }
+    }
+  }
+}

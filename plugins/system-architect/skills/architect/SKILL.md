@@ -21,10 +21,12 @@ Read the relevant source before drawing conclusions. Distinguish observed source
 | Complete/full SPEC, contractor-ready document now, or no clarification pauses | Full SPEC: the entire requested document with labeled assumptions | `references/spec-operating-protocol.md`; `references/templates.md` |
 | Review/critique a design, plan, repository, or claimed readiness | Review: evidence-backed findings and exact corrections; no unsolicited rewrite | `references/spec-operating-protocol.md`, “Source intake” and “Review and update”; `references/checklists.md` |
 | Explicitly edit/update/merge the SPEC or plan itself | Update: edit the actual artifact and propagate affected changes | Same review references; relevant template only when needed |
+| Create an epic, milestone, or roadmap | Requested planning profile only; no automatic artifact bundle or execution | [Implementation planning](references/implementation-planning.md) |
+| Assess or recover damage after suspect project changes | Sibling recovery route; assessment read-only unless actions are authorized | [Recover](../recover/SKILL.md) |
 | Create, update, or review an ADR | Create/update the requested record; review-only returns findings, not an unsolicited rewrite. Preserve decision status and repository conventions | `references/design-gate.md`, “ADR lifecycle”; `references/templates.md` |
 | Decide between architectures, discuss a design, or brainstorm | Design decision: recommendation, real alternatives, constraints, consequences | `references/design-gate.md` |
 | Implement/fix code from a design, with source changes authorized | Implementation: inspect, change code, verify available behavior, deliver the result | `references/spec-operating-protocol.md`, “Authorized implementation” |
-| Continue/resume without a different deliverable | Recovery: reconstruct state and perform the next unfinished step | Current source/artifact; protocol “Recovery and change impact” |
+| Continue/resume without a different deliverable | Session continuation: reconstruct state and perform the next unfinished step | Current source/artifact; protocol “Recovery and change impact” |
 | Show available knowledge/templates or diagnose missing resources | Knowledge inspection: report only resources actually read | “Resources and diagnostics” below |
 | Explain a fact, translate, reformat, or perform a mechanical task | Direct answer: do exactly that; no SPEC or approval gate | Nothing unless needed for the answer |
 
@@ -37,6 +39,8 @@ A status/review interlude does not erase earlier implementation authorization, b
 Load `references/decision-evidence.md` when a consequential architecture recommendation, comparison, external contract, source conflict, or review finding needs evidence beyond a direct source read. Use its targeted repair and stopping rules without turning the requested result into a research report. A simple decision with sufficient evidence needs no research phase or evidence ledger.
 
 For code and design changes, apply the proportional [architectural change lens](references/spec-operating-protocol.md#architectural-change-lens): identify the owner and invariant for a local change; make target ownership, affected consumers, and transition behavior explicit for boundary or system changes. Architecture controls direction, not unrelated scope. This is not permission to turn every edit into a SPEC, questionnaire, or redesign.
+
+For CLI design or automation-facing command contracts, load “Automation-friendly CLI contracts” in `references/implementation-patterns.md`. This is optional interface guidance, not a CLI generator or MCP requirement.
 
 For a product that actually uses models, prompts, retrieval, or agents, load “AI and agent component contracts” in `references/implementation-patterns.md` and the matching contract in `references/templates.md`. This is conditional architecture guidance, not a new general prompt-writing route or permission to add AI to another system.
 
@@ -53,6 +57,8 @@ For a product that actually uses models, prompts, retrieval, or agents, load “
 - **Keep artifacts minimal.** Create only the requested artifact or a file with a necessary, unique working purpose. Reuse the canonical project record. Do not manufacture manifests, inventories, history copies, nested archives, reports, or README-per-folder packaging. For downloadable revisions, retain the original and use the next versioned filename; for an explicitly requested in-place source update, use the source's normal workflow.
 
 ## SPEC output contract
+
+This section governs SPEC output. Explicit planning profiles and damaged-project recovery use their own requested result shape, not an additional SPEC.
 
 Unless the user selects another structure or the project's binding format requires one, use these six sections in order:
 
@@ -82,7 +88,9 @@ All paths below are relative to this skill directory. Read only the sections nee
 | `references/decision-evidence.md` | Targeted architecture research, claim support, comparable options, conflicts, and bounded evidence repair; only when a decision needs them |
 | `references/templates.md` | Markdown SPEC, selected multi-file specification profiles, ADR, Design Brief, traceability, review, handoff, contracts, and PlantUML |
 | `assets/spec-template.adoc` | Copy/adapt a real AsciiDoc SPEC; the same content contract as Markdown |
-| `references/implementation-patterns.md` | Conditional style choices, ownership, jobs, retries, integrations, operations, migrations, scaling, and AI/agent contracts |
+| `references/implementation-planning.md` | Optional epic, milestone, and roadmap profiles; only the requested planning artifact |
+| `../recover/SKILL.md` | Evidence-based damaged-project recovery; distinct from normal session continuation |
+| `references/implementation-patterns.md` | Conditional style choices, ownership, jobs, retries, integrations, operations, migrations, scaling, CLI contracts, and AI/agent contracts |
 | `references/examples/saas-project-portal.md` | One internally coherent worked SPEC, only when requested or needed to resolve an output ambiguity |
 | `references/checklists.md` | Readiness and scope checks; manual host acceptance scenarios when validating this plugin |
 

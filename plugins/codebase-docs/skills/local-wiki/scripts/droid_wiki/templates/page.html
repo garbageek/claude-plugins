@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ style_href }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="topbar-brand" href="{{ home_url }}" aria-label="Local Wiki home">
+        <span class="brand-mark" aria-hidden="true">LW</span>
+        <span>Local Wiki</span>
+      </a>
+      <div class="topbar-search">
+        <label class="sr-only" for="wiki-search">Search</label>
+        <input id="wiki-search" class="search" type="search" placeholder="Search" data-search-json="{{ search_json }}">
+        <div id="search-results" class="search-results"></div>
+      </div>
+      <div class="topbar-actions" aria-hidden="true">
+        <span class="bp-mini-label">Local</span>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <a class="brand" href="{{ home_url }}">Local Wiki</a>
+        <nav class="nav" aria-label="Wiki pages">
+          {% for item in sidebar %}
+          <a class="nav-link{% if item.id == current_id %} active{% endif %}" href="{{ item.url }}">{{ item.title }}</a>
+          {% endfor %}
+        </nav>
+      </aside>
+      <main class="content">
+        <article class="page">
+          {{ content | safe }}
+        </article>
+        <footer class="page-nav">
+          {% if previous %}
+          <a href="{{ previous.url }}">Previous: {{ previous.title }}</a>
+          {% else %}
+          <span></span>
+          {% endif %}
+          {% if next %}
+          <a href="{{ next.url }}">Next: {{ next.title }}</a>
+          {% endif %}
+        </footer>
+      </main>
+    </div>
+    <script src="{{ search_href }}"></script>
+
+  </body>
+</html>

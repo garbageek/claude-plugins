@@ -1,0 +1,15 @@
+{
+  "name": "human-runbooks",
+  "version": "0.2.0",
+  "description": "Draft, update, and resume human-executed procedures with explicit actions, observations, retry decisions, and final validation.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "displayName": "Human Runbooks",
+  "keywords": [
+    "runbooks",
+    "operations",
+    "procedures"
+  ]
+}
