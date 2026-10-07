@@ -10,6 +10,9 @@ Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI on
 
 Purpose: fix one unblocked audit ticket, record implementation evidence, and hand off to independent verification.
 
+
+Use the shared [resolution proof guide](../../docs/references/resolution-proof.md) to separate proposed checks, observed results, and verdicts, including whether corrected source is active in the relevant running instance. Keep the existing acceptance gates and user-authorized validation scope; do not generate tests or restart services implicitly.
+
 ## First move from empty context
 
 ```bash

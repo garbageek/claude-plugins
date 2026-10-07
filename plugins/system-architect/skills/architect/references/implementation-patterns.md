@@ -273,3 +273,30 @@ For export, manual annotation, and reload workflows, distinguish the input-case 
 Tie acceptance to the user workflow: valid usable output, preserved constraints, actual authorized effects when applicable, visible failure, and bounded recovery. Observe provider/model and prompt/schema versions, latency, usage/cost basis, failure category, and result destination only where needed for support or reproducibility; avoid logging unnecessary private prompt content.
 
 Compare a prompt change against the same representative input and settings when judging behavior. Separate an instruction-diff risk, a manually observed change, and a measured performance improvement. Do not claim an improvement percentage, repeatability guarantee, or production acceptance without the corresponding observations. Follow SKILL.md's explicit-request rule for automated tests; this pattern does not create an evaluation platform or mandatory suite.
+
+
+## Automation-friendly CLI contracts
+
+Apply when the product actually exposes a CLI to scripts, people, or agents. Keep the project's existing interface and compatibility rules unless a change is authorized. This is design guidance, not a required runtime, generator, or universal set of flags.
+
+### Inputs, output, and errors
+
+Choose an explicit machine-readable output mode appropriate to the consumer. A JSON object/array suits bounded results; NDJSON can suit streaming records; text remains useful for humans. A structured input payload is useful for complex requests, but a small CLI may be clearer with ordinary arguments. Document real flags and validation rather than assuming every tool uses a particular spelling.
+
+Keep machine-output stdout free of progress/prose. Send human diagnostics to stderr. Define where structured errors appear, their stable codes/fields, and exit status semantics; do not alternate incompatible envelopes without a declared contract. Success with no matches, partial output, invalid input, unavailable dependency, operation failure, and cancellation may require distinct representations. Report partial/unavailable measurements as such, not as zero or success.
+
+Auto-switching format based on TTY is a compatibility choice, not a requirement. Prefer an explicit override that behaves predictably in automation. Document precedence between flags, environment, configuration, and defaults. Do not make a format flag silently change the operation's semantic scope.
+
+### Bounded results and streaming
+
+For large outputs, choose relevant limits, pagination/cursors, filters, field selection, or streaming. Declare defaults, ordering, continuation, and truncation/coverage so a bounded result is not mistaken for the entire dataset. Define failure after partial streaming and broken-pipe behavior. A consumer closing a pipe is not proof that an underlying mutation was canceled.
+
+Schema/discovery commands are useful for dynamic or large interfaces; accurate help and examples can suffice for a small fixed command. Discovery describes implemented behavior, not a substitute for it. Do not add a mandatory schema service or invent guarantees from example output.
+
+### Shared core and headless behavior
+
+Where multiple interfaces already serve the same operations, keep domain validation, business rules, and effects in one shared core; CLI/HTTP/MCP adapters translate transport and presentation. A core library need not become a separate binary or service. Add MCP only for an actual consumer requirement, not merely because a CLI is agent-friendly.
+
+Define input, configuration, and failure behavior for noninteractive execution explicitly. Do not unexpectedly prompt on stdin in headless mode. Interactive confirmation, an explicit authorization option, or a dry-run are product-specific choices governed by the actual operation and host/user contract; neither a mandatory prompt for every mutation nor silent permission escalation is a universal pattern. A dry-run's supported checks and unperformed effects must be explicit.
+
+Use the project's actual validation rules for IDs, paths, values, and combinations; do not impose example-specific constraints as universal API behavior. Keep executable checks in the implementation. A prompt, help text, or a sanitized rendering does not enforce the domain contract.

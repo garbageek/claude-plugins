@@ -1,0 +1,36 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "prompt-design",
+  "version": "0.1.0",
+  "description": "Create, rewrite, diagnose, adapt, and evaluate usable prompts, including source-backed service-to-prompt translation.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "keywords": [
+    "prompts",
+    "agents",
+    "prompt-design"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Prompt Design",
+        "shortDescription": "Task-focused prompt design",
+        "longDescription": "Create, rewrite, diagnose, adapt, and evaluate usable prompts, including source-backed service-to-prompt translation.",
+        "developerName": "Artur Kulik",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Prompt design",
+          "Prompt review",
+          "Source-backed prompts"
+        ],
+        "defaultPrompt": [
+          "Create a copy-ready prompt for this task and output format.",
+          "Diagnose and rewrite this prompt without changing its intended task.",
+          "Derive an agent prompt from this service while preserving executable gates."
+        ]
+      }
+    }
+  }
+}

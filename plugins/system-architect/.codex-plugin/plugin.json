@@ -3,12 +3,14 @@
     "name": "Artur Kulik",
     "url": "https://mycmdline.com"
   },
-  "description": "Turns software ideas and existing designs into lean, implementation-ready architecture SPECs, reviews, and design decisions.",
+  "description": "Implementation-ready architecture SPECs, reviews, design decisions, optional planning profiles, and evidence-based project recovery.",
   "interface": {
     "capabilities": [
       "Architecture SPECs",
       "Architecture reviews",
-      "Design decisions"
+      "Design decisions",
+      "Implementation planning",
+      "Project recovery"
     ],
     "category": "Developer Tools",
     "defaultPrompt": [
@@ -18,14 +20,14 @@
     ],
     "developerName": "Artur Kulik",
     "displayName": "System Architect",
-    "longDescription": "Create implementation-ready architecture SPECs in Markdown, AsciiDoc, or an explicitly selected project format. Review real source and contracts, preserve capabilities through migrations, and make ownership and transition authority explicit. Record significant decisions in ADRs using existing conventions. When source artifacts and host tools are available, carry out authorized architecture-scoped implementation and preserve cumulative progress through self-contained handoffs. Specify pipeline recovery, end-to-end budgets, and AI component boundaries only where the product requires them. Keep requirements, tasks, acceptance, and evidence aligned without imposing a stack, research framework, or unnecessary documentation.",
+    "longDescription": "Create implementation-ready architecture SPECs in Markdown, AsciiDoc, or an explicitly selected project format. Review real source and contracts, preserve capabilities through migrations, and make ownership and transition authority explicit. Record significant decisions in ADRs using existing conventions. When source artifacts and host tools are available, carry out authorized architecture-scoped implementation and preserve cumulative progress through self-contained handoffs. Specify pipeline recovery, end-to-end budgets, and AI component boundaries only where the product requires them. Keep requirements, tasks, acceptance, and evidence aligned without imposing a stack, research framework, or unnecessary documentation. Select an epic, milestone, or roadmap profile without generating an automatic document bundle. Assess damaged projects read-only, preserving valid improvements; execute recovery only when authorized. Use focused CLI contract guidance when designing command-line interfaces.",
     "shortDescription": "Architecture specs and reviews",
     "composerIcon": "./assets/composer-icon.png",
     "logo": "./assets/logo.png"
   },
   "name": "system-architect",
   "skills": "./skills",
-  "version": "0.9.6",
+  "version": "0.10.0",
   "keywords": [
     "software-architecture",
     "system-design",

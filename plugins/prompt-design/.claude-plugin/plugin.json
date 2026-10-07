@@ -1,0 +1,15 @@
+{
+  "name": "prompt-design",
+  "version": "0.1.0",
+  "description": "Create, rewrite, diagnose, adapt, and evaluate usable prompts, including source-backed service-to-prompt translation.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "displayName": "Prompt Design",
+  "keywords": [
+    "prompts",
+    "agents",
+    "prompt-design"
+  ]
+}

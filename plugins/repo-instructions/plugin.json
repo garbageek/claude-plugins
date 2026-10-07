@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "repo-instructions",
+  "version": "0.1.0",
+  "description": "Create and review scoped Claude/Codex repository instructions from actual commands and boundaries while preserving useful existing guidance.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "keywords": [
+    "agents-md",
+    "claude-md",
+    "instructions",
+    "repository"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Repo Instructions",
+        "shortDescription": "Grounded repository instructions",
+        "longDescription": "Create and review scoped Claude/Codex repository instructions from actual commands and boundaries while preserving useful existing guidance.",
+        "developerName": "Artur Kulik",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Instruction initialization",
+          "Instruction review",
+          "Scope and drift analysis"
+        ],
+        "defaultPrompt": [
+          "Initialize instructions for the requested repository scope using real source evidence.",
+          "Review these instructions read-only for drift and conflicts.",
+          "Propose the smallest update while preserving useful existing rules."
+        ]
+      }
+    }
+  }
+}
