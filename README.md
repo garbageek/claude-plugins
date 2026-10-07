@@ -1,18 +1,406 @@
 # claude-plugins
 
-Plugin marketplace for evidence-led audit, architecture, prompt design, human runbooks, source-backed codebase documentation, and repository instructions.
+Plugin marketplace for evidence-led audit, architecture, prompt design, human procedures, source-backed documentation, and repository instructions.
 
-## Install
+This README covers repository-specific installation, plugin usage, runtime notes, and validation.
 
-### Claude Code
+## Plugin catalog
+
+| Plugin | Version | Claude marketplace | OpenAI/Codex marketplace | Entry skills | Runtime requirements |
+|---|---:|---|---|---|---|
+| `audit-workflow` | `1.2.0` | yes | no | `deep-review`, `feature-scattering`, existing audit lifecycle skills | `python3`; `feature-scattering` helper requires Python 3.10+ |
+| `system-architect` | `0.10.0` | yes | yes | `architect`, `recover` | none beyond the host app |
+| `prompt-design` | `0.1.0` | yes | yes | `design-prompts` | none beyond the host app |
+| `human-runbooks` | `0.1.0` | yes | yes | `human-execution-runbook` | none beyond the host app |
+| `codebase-docs` | `0.1.0` | yes | yes | `code-to-prd`, `local-wiki` | Python 3.10+ for helpers; optional HTML wiki rendering also uses skill-local Jinja2/markdown-it-py dependencies |
+| `repo-instructions` | `0.1.0` | yes | yes | `init`, `review` | none beyond the host app |
+
+The two repository catalogs intentionally differ:
+
+```text
+Claude marketplace:  .claude-plugin/marketplace.json
+    -> audit-workflow
+    -> system-architect
+    -> prompt-design
+    -> human-runbooks
+    -> codebase-docs
+    -> repo-instructions
+
+OpenAI marketplace:  .agents/plugins/marketplace.json
+    -> system-architect
+    -> prompt-design
+    -> human-runbooks
+    -> codebase-docs
+    -> repo-instructions
+```
+
+`audit-workflow` is intentionally not published for Codex. Adding portable skills to it did not make its hooks, MCP runtime, or lifecycle integration Codex-compatible.
+
+The five portable packages are published through the OpenAI/Codex repository marketplace as shown above. Repository validation and local helper execution are not equivalent to installed-host execution on every Claude/Codex surface.
+
+---
+
+# 1. Claude Code
+
+## 1.1 Install from GitHub
+
+Register the GitHub marketplace once.
+
+Inside a Claude Code session:
 
 ```text
 /plugin marketplace add garbageek/claude-plugins
-/plugin install <plugin>@artur-plugins
+```
+
+Or from the shell:
+
+```bash
+claude plugin marketplace add garbageek/claude-plugins
+```
+
+Install only the plugins you need:
+
+```text
+/plugin install audit-workflow@artur-plugins
+/plugin install system-architect@artur-plugins
+/plugin install prompt-design@artur-plugins
+/plugin install human-runbooks@artur-plugins
+/plugin install codebase-docs@artur-plugins
+/plugin install repo-instructions@artur-plugins
+```
+
+Shell equivalents:
+
+```bash
+claude plugin install audit-workflow@artur-plugins
+claude plugin install system-architect@artur-plugins
+claude plugin install prompt-design@artur-plugins
+claude plugin install human-runbooks@artur-plugins
+claude plugin install codebase-docs@artur-plugins
+claude plugin install repo-instructions@artur-plugins
+```
+
+Each interactive `/plugin install ...` opens plugin details first so you can review the package and choose the installation scope.
+
+## 1.2 Choose the Claude install scope
+
+| Scope | Meaning | Settings file |
+|---|---|---|
+| `user` | Available to you in every project on this machine | `~/.claude/settings.json` |
+| `project` | Enabled for collaborators in this repository | `.claude/settings.json` |
+| `local` | Enabled only for you in this repository | `.claude/settings.local.json` |
+
+Example:
+
+```bash
+claude plugin install prompt-design@artur-plugins --scope user
+claude plugin install prompt-design@artur-plugins --scope project
+claude plugin install prompt-design@artur-plugins --scope local
+```
+
+`user` is the default shell scope. If the same plugin is configured at several scopes, precedence is:
+
+```text
+local > project > user
+```
+
+A committed project setting enables the plugin for collaborators but does not download the plugin package for them. Each collaborator still installs the plugin once at project scope.
+
+## 1.3 Apply and verify
+
+A plugin installed from the shell is available on the next Claude Code start. In an already open session:
+
+```text
 /reload-plugins
 ```
 
-Available plugins:
+If Claude warns that reloading would invalidate the prompt cache:
+
+```text
+/reload-plugins --force
+```
+
+List installed plugins:
+
+```bash
+claude plugin list
+```
+
+Inspect individual plugins:
+
+```bash
+claude plugin details audit-workflow
+claude plugin details system-architect
+claude plugin details prompt-design
+claude plugin details human-runbooks
+claude plugin details codebase-docs
+claude plugin details repo-instructions
+```
+
+### Skill entry points
+
+| Plugin | Claude Code entry points |
+|---|---|
+| `audit-workflow` | `/audit-workflow:deep-review`, `/audit-workflow:feature-scattering`, lifecycle skills listed below |
+| `system-architect` | `/system-architect:architect`, `/system-architect:recover` |
+| `prompt-design` | `/prompt-design:design-prompts` |
+| `human-runbooks` | `/human-runbooks:human-execution-runbook` |
+| `codebase-docs` | `/codebase-docs:code-to-prd`, `/codebase-docs:local-wiki` |
+| `repo-instructions` | `/repo-instructions:init`, `/repo-instructions:review` |
+
+### `audit-workflow` 1.2.0
+
+Read-only investigation can now start without creating audit state:
+
+```text
+/audit-workflow:deep-review
+/audit-workflow:feature-scattering
+```
+
+`deep-review` can route to click-path, test-quality, and operator-surface analysis when relevant. `feature-scattering` uses its bundled scanner but does not create tickets by default.
+
+Ticket-lifecycle first run remains:
+
+```text
+/audit-workflow:audit-init
+/audit-workflow:audit-status
+```
+
+Normal lifecycle flows remain:
+
+```text
+/audit-workflow:audit-discovery
+/audit-workflow:audit-triage
+/audit-workflow:audit-resolution
+/audit-workflow:audit-verification
+```
+
+The canonical Python CLI fallback is unchanged:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
+```
+
+From a repository clone:
+
+```bash
+python3 plugins/audit-workflow/scripts/audit.py <command> [options]
+```
+
+### `system-architect` 0.10.0
+
+Use the canonical architecture workflow for normal architecture work:
+
+```text
+/system-architect:architect
+```
+
+The architect now includes optional epic, milestone, and roadmap output profiles plus focused CLI-contract guidance. Damaged-project assessment/recovery is a separate entry point:
+
+```text
+/system-architect:recover
+```
+
+Recovery assessment is read-only by default; recovery actions require explicit authorization.
+
+### `prompt-design` 0.1.0
+
+```text
+/prompt-design:design-prompts
+```
+
+Supports prompt creation, rewrite, diagnosis, adaptation, evaluation, and source-backed service-to-prompt translation.
+
+### `human-runbooks` 0.1.0
+
+```text
+/human-runbooks:human-execution-runbook
+```
+
+Supports drafting, updating from actual execution evidence, and resuming interrupted human-executed procedures.
+
+### `codebase-docs` 0.1.0
+
+```text
+/codebase-docs:code-to-prd
+/codebase-docs:local-wiki
+```
+
+`code-to-prd` separates analysis/inventory from PRD scaffolding. Its helpers require Python 3.10+ and refuse destructive scaffolding into a populated destination.
+
+`local-wiki` supports Markdown wiki finalization, validation, Markdown bundle export, and optional offline HTML output. Markdown operations use the standard library. HTML rendering additionally uses the skill-local `Jinja2` and `markdown-it-py` dependency list and should only install those dependencies when authorized.
+
+### `repo-instructions` 0.1.0
+
+```text
+/repo-instructions:init
+/repo-instructions:review
+```
+
+`init` creates instructions only for the requested host/scope. `review` is read-only by default and checks actual repository evidence plus current Claude/Codex instruction-loading behavior.
+
+## 1.4 Enable or disable
+
+Use the same command for any plugin:
+
+```bash
+claude plugin disable <plugin>@artur-plugins
+claude plugin enable <plugin>@artur-plugins
+```
+
+For example:
+
+```bash
+claude plugin disable codebase-docs@artur-plugins
+claude plugin enable codebase-docs@artur-plugins
+```
+
+You can also use `/plugin` -> **Installed** and press **Space** on a plugin.
+
+## 1.5 Update
+
+Refresh only the marketplace listing:
+
+```bash
+claude plugin marketplace update artur-plugins
+```
+
+Update an installed plugin:
+
+```bash
+claude plugin update <plugin>@artur-plugins
+```
+
+Examples for the two upgraded existing products:
+
+```bash
+claude plugin update audit-workflow@artur-plugins
+claude plugin update system-architect@artur-plugins
+```
+
+These operations are different:
+
+```text
+marketplace update -> refreshes marketplace metadata/listing
+plugin update      -> updates one installed plugin
+```
+
+To refresh the marketplace and update all plugins installed from it in one operation, open `/plugin` -> **Marketplaces** -> `artur-plugins` -> **Update marketplace**.
+
+Third-party marketplaces have auto-update disabled by default. Enable it from `/plugin` -> **Marketplaces** -> `artur-plugins` -> **Enable auto-update** if desired.
+
+The current session keeps the plugin version already loaded until you run `/reload-plugins` or start a new session.
+
+## 1.6 Upgrade from the previous two-plugin repository version
+
+
+```bash
+claude plugin marketplace update artur-plugins
+claude plugin update audit-workflow@artur-plugins
+claude plugin update system-architect@artur-plugins
+```
+
+Then install whichever new products you want:
+
+```bash
+claude plugin install prompt-design@artur-plugins
+claude plugin install human-runbooks@artur-plugins
+claude plugin install codebase-docs@artur-plugins
+claude plugin install repo-instructions@artur-plugins
+```
+
+Apply the new versions to an already open session with:
+
+```text
+/reload-plugins
+```
+
+Expected version changes:
+
+```text
+audit-workflow    1.1.1 -> 1.2.0
+system-architect  0.9.6 -> 0.10.0
+prompt-design              0.1.0 new
+human-runbooks             0.1.0 new
+codebase-docs              0.1.0 new
+repo-instructions          0.1.0 new
+```
+
+## 1.7 Remove
+
+Remove an individual plugin:
+
+```bash
+claude plugin uninstall <plugin>@artur-plugins
+```
+
+For example:
+
+```bash
+claude plugin uninstall prompt-design@artur-plugins
+```
+
+Remove the marketplace itself only when you no longer need any plugin from it:
+
+```bash
+claude plugin marketplace remove artur-plugins
+```
+
+Removing a Claude marketplace also uninstalls plugins installed from that marketplace and removes their enabled entries from Claude settings.
+
+## 1.8 Desktop Code tab and VS Code
+
+### Claude desktop app: local or SSH Code session
+
+Open:
+
+```text
++ -> Plugins -> Add plugin
+```
+
+Manage installed plugins with:
+
+```text
++ -> Plugins -> Manage plugins
+```
+
+The plugin browser is not available in Claude Code cloud sessions.
+
+### VS Code
+
+Type:
+
+```text
+/plugins
+```
+
+Use the **Plugins** and **Marketplaces** tabs. Changes apply to open sessions without restarting VS Code.
+
+---
+
+# 2. Claude app, claude.ai, and Cowork
+
+Open:
+
+```text
+Customize -> Plugins -> Add -> Add marketplace
+```
+
+Add either:
+
+```text
+garbageek/claude-plugins
+```
+
+or:
+
+```text
+https://github.com/garbageek/claude-plugins
+```
+
+The `artur-plugins` Claude marketplace then exposes all six plugins:
 
 ```text
 audit-workflow
@@ -23,14 +411,49 @@ codebase-docs
 repo-instructions
 ```
 
-### OpenAI Codex
+The repository does not contain prebuilt per-plugin `.plugin` release archives, so the repository-marketplace path is the canonical installation path documented here.
 
-```bash
-codex plugin marketplace add garbageek/claude-plugins
-codex plugin add <plugin>@artur-plugins
+## 2.1 Account sync to Claude Code
+
+A plugin installed on your Claude account can sync down to Claude Code when Claude Code starts while signed in to the same account. It appears with an ID such as:
+
+```text
+<plugin>@synced
 ```
 
-The Codex marketplace contains:
+The reverse does not happen automatically: a plugin installed only with `/plugin` or `claude plugin install` remains on that machine and is not added to your Claude account.
+
+## 2.2 Surface differences
+
+### Skill-focused portable plugins
+
+`system-architect`, `prompt-design`, `human-runbooks`, and `repo-instructions` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
+
+### `codebase-docs`
+
+The skills can load as plugin content, but its practical repository-analysis workflows use local Python helpers and local source files. Full helper-backed behavior therefore depends on a host that can access the repository and run Python 3.10+. Optional HTML wiki rendering has additional skill-local Python dependencies.
+
+### `audit-workflow`
+
+`audit-workflow` contains skills, commands, agents, hooks, a local stdio MCP server, and a Python runtime:
+
+- **Claude Code:** full intended target; skills, commands, agents, hooks, MCP tools, and Python runtime are packaged together.
+- **Claude Chat:** skill/command content can load, while agents, hooks, and the local MCP runtime do not provide the same lifecycle runtime.
+- **Cowork:** agents, hooks, and a local MCP server can load when the session runs on your computer, but this repository does not claim the `audit-workflow` Cowork runtime as verified; `python3` is required there.
+
+The plugin deliberately has no top-level `bin/` directory because Claude Chat/Cowork installation rejects plugins that contain one.
+
+---
+
+# 3. OpenAI Codex
+
+The native repository marketplace is:
+
+```text
+.agents/plugins/marketplace.json
+```
+
+It contains five plugins:
 
 ```text
 system-architect
@@ -40,110 +463,471 @@ codebase-docs
 repo-instructions
 ```
 
-`audit-workflow` is intentionally Claude-only because its lifecycle integration uses Claude-specific hooks, agents, commands, and a local MCP/Python runtime.
+`audit-workflow` is intentionally absent.
 
-## Plugins
+## 3.1 Install from GitHub
 
-### audit-workflow
+Register the GitHub marketplace:
 
-Evidence-first audit lifecycle with discovery, triage, resolution, independent verification, read-only deep review, feature-scattering analysis, lifecycle hooks, MCP tools, and the canonical Python runtime at `plugins/audit-workflow/scripts/audit.py`.
-
-Main entry points:
-
-```text
-/audit-workflow:deep-review
-/audit-workflow:feature-scattering
-/audit-workflow:audit-discovery
-/audit-workflow:audit-triage
-/audit-workflow:audit-resolution
-/audit-workflow:audit-verification
+```bash
+codex plugin marketplace add garbageek/claude-plugins
 ```
 
-Requires `python3`; the feature-scattering helper requires Python 3.10+. The supported full-runtime Claude Code target is macOS/Linux. Native Windows and the full Cowork runtime are not claimed as supported/verified.
+Verify the source:
 
-See [plugins/audit-workflow/README.md](plugins/audit-workflow/README.md).
-
-### system-architect
-
-Implementation-ready architecture SPECs, reviews, design decisions, optional implementation-planning profiles, and evidence-based damaged-project recovery.
-
-```text
-/system-architect:architect
-/system-architect:recover
+```bash
+codex plugin marketplace list
 ```
 
-Portable across the Claude and OpenAI/Codex marketplaces.
+Install the plugins you need:
 
-### prompt-design
-
-Creates, rewrites, diagnoses, adapts, and evaluates prompts, including source-backed translation from implemented service behavior.
-
-```text
-/prompt-design:design-prompts
+```bash
+codex plugin add system-architect@artur-plugins
+codex plugin add prompt-design@artur-plugins
+codex plugin add human-runbooks@artur-plugins
+codex plugin add codebase-docs@artur-plugins
+codex plugin add repo-instructions@artur-plugins
 ```
 
-Portable across the Claude and OpenAI/Codex marketplaces.
+Equivalent explicit marketplace form for any one plugin:
 
-### human-runbooks
-
-Drafts, updates, and resumes human-executed procedures with explicit actions, observations, retry decisions, and final validation.
-
-```text
-/human-runbooks:human-execution-runbook
+```bash
+codex plugin add prompt-design --marketplace artur-plugins
 ```
 
-Portable across the Claude and OpenAI/Codex marketplaces.
+or:
 
-### codebase-docs
-
-Documents implemented systems through source-backed PRDs and local repository wikis.
-
-```text
-/codebase-docs:code-to-prd
-/codebase-docs:local-wiki
+```bash
+codex plugin add prompt-design -m artur-plugins
 ```
 
-Bundled helpers require Python 3.10+. Optional HTML wiki rendering additionally uses the dependencies listed in the local-wiki skill.
+Verify installed and available plugins:
 
-Portable package metadata is published for Claude and OpenAI/Codex; helper-backed workflows require local repository access and Python execution.
-
-### repo-instructions
-
-Creates and reviews repository-scoped Claude/Codex instructions from actual commands, boundaries, and existing guidance.
-
-```text
-/repo-instructions:init
-/repo-instructions:review
+```bash
+codex plugin list
+codex plugin list --json
+codex plugin list --marketplace artur-plugins --available --json
 ```
 
-Portable across the Claude and OpenAI/Codex marketplaces.
+`--available` includes marketplace plugins that are not installed and requires `--json`.
 
-## Marketplace layout
+Do not use `codex plugin install`; the documented Codex subcommand is `codex plugin add`.
+
+## 3.2 Interactive installation and enablement
+
+Start Codex and open:
+
+```text
+/plugins
+```
+
+Switch to the `artur-plugins` marketplace, open the desired plugin, and install it. Press **Space** on an installed plugin to enable or disable it.
+
+In the ChatGPT desktop app, open the **Plugins** tab, select `artur-plugins`, and install the desired portable plugin.
+
+Start a new chat or CLI session before first use so bundled skills and plugin content are loaded.
+
+## 3.3 Refresh / upgrade the marketplace
+
+Refresh this Git marketplace:
+
+```bash
+codex plugin marketplace upgrade artur-plugins
+```
+
+Without a marketplace name, Codex refreshes all configured Git marketplaces:
+
+```bash
+codex plugin marketplace upgrade
+```
+
+`upgrade` refreshes configured Git marketplace sources. It is separate from plugin installation state.
+
+Machine-readable checks:
+
+```bash
+codex plugin marketplace list --json
+codex plugin marketplace upgrade artur-plugins --json
+codex plugin list --marketplace artur-plugins --available --json
+```
+
+### Upgrade from the previous repository version
+
+Refresh the marketplace first:
+
+```bash
+codex plugin marketplace upgrade artur-plugins
+codex plugin list --marketplace artur-plugins --available --json
+```
+
+Install the four newly available portable products as desired:
+
+```bash
+codex plugin add prompt-design@artur-plugins
+codex plugin add human-runbooks@artur-plugins
+codex plugin add codebase-docs@artur-plugins
+codex plugin add repo-instructions@artur-plugins
+```
+
+There is no separate documented `codex plugin update` subcommand. If an already installed `system-architect` remains on the older cached version after marketplace refresh, remove and add it again:
+
+```bash
+codex plugin remove system-architect@artur-plugins
+codex plugin add system-architect@artur-plugins
+```
+
+Then start a new Codex/ChatGPT desktop session.
+
+## 3.4 Remove
+
+Remove any installed portable plugin:
+
+```bash
+codex plugin remove <plugin>@artur-plugins
+```
+
+Equivalent explicit marketplace form:
+
+```bash
+codex plugin remove <plugin> --marketplace artur-plugins
+```
+
+`codex plugin remove` removes the installed plugin from local config and cache.
+
+Remove the marketplace itself separately if it is no longer needed:
+
+```bash
+codex plugin marketplace remove artur-plugins
+```
+
+---
+
+# 4. Work from a local clone
+
+Clone the repository when developing plugins locally or when you want the marketplace to resolve directly from the working tree.
+
+Clone and enter the repository:
+
+```bash
+git clone https://github.com/garbageek/claude-plugins.git
+cd claude-plugins
+```
+
+The repository root contains:
+
+```text
+claude-plugins/
+├── .claude-plugin/marketplace.json
+├── .agents/plugins/marketplace.json
+└── plugins/
+```
+
+## 4.1 Claude Code local marketplace
+
+Inside Claude Code from the repository root:
+
+```text
+/plugin marketplace add .
+/plugin install audit-workflow@artur-plugins
+/plugin install system-architect@artur-plugins
+/plugin install prompt-design@artur-plugins
+/plugin install human-runbooks@artur-plugins
+/plugin install codebase-docs@artur-plugins
+/plugin install repo-instructions@artur-plugins
+/reload-plugins
+```
+
+The Claude marketplace entries use relative plugin sources. When the marketplace is added from this local directory, Claude Code loads those plugins in place from the repository. Source edits become visible on the next session start or after `/reload-plugins`, without a version bump.
+
+For one-session development of one plugin without installing the marketplace:
+
+```bash
+claude --plugin-dir ./plugins/audit-workflow
+claude --plugin-dir ./plugins/system-architect
+claude --plugin-dir ./plugins/prompt-design
+claude --plugin-dir ./plugins/human-runbooks
+claude --plugin-dir ./plugins/codebase-docs
+claude --plugin-dir ./plugins/repo-instructions
+```
+
+Use one `--plugin-dir` target per development session unless deliberately testing several plugin directories together.
+
+## 4.2 Codex local marketplace
+
+From the repository root:
+
+```bash
+codex plugin marketplace add .
+codex plugin list --marketplace artur-plugins --available --json
+```
+
+Install selected portable plugins:
+
+```bash
+codex plugin add system-architect@artur-plugins
+codex plugin add prompt-design@artur-plugins
+codex plugin add human-runbooks@artur-plugins
+codex plugin add codebase-docs@artur-plugins
+codex plugin add repo-instructions@artur-plugins
+```
+
+For local marketplace installs, the runtime copy is cached under:
+
+```text
+~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/
+```
+
+For a local plugin, the version directory is normally:
+
+```text
+local
+```
+
+Therefore during Codex development:
+
+```text
+source directory != installed runtime copy
+```
+
+If source changes are not reflected, refresh/reinstall the plugin and restart the relevant local client.
+
+## 4.3 Repo-local Codex enablement
+
+The repository marketplace makes the five portable plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
+
+```toml
+[plugins."system-architect@artur-plugins"]
+enabled = true
+
+[plugins."prompt-design@artur-plugins"]
+enabled = true
+
+[plugins."human-runbooks@artur-plugins"]
+enabled = true
+
+[plugins."codebase-docs@artur-plugins"]
+enabled = true
+
+[plugins."repo-instructions@artur-plugins"]
+enabled = true
+```
+
+Set any entry to `false` to disable it for the project without uninstalling it.
+
+Codex reads project `.codex/config.toml` only for trusted projects.
+
+---
+
+# 5. Why this repository has two marketplace manifests
 
 ```text
 .claude-plugin/marketplace.json
-    audit-workflow
-    system-architect
-    prompt-design
-    human-runbooks
-    codebase-docs
-    repo-instructions
+    Claude marketplace
+    -> audit-workflow
+    -> system-architect
+    -> prompt-design
+    -> human-runbooks
+    -> codebase-docs
+    -> repo-instructions
 
 .agents/plugins/marketplace.json
-    system-architect
-    prompt-design
-    human-runbooks
-    codebase-docs
-    repo-instructions
+    OpenAI-native repository marketplace
+    -> system-architect
+    -> prompt-design
+    -> human-runbooks
+    -> codebase-docs
+    -> repo-instructions
 ```
 
-## Validate
+Both marketplaces are named `artur-plugins`, but they intentionally target different hosts and expose different plugin sets.
 
-GitHub Actions validates both marketplace registries, plugin metadata/frontmatter, local package links, manifest identity/version consistency, OpenAI interface/category consistency, repository layout, and maintained Python helpers.
+The ChatGPT desktop app also recognizes a repository-level `.claude-plugin/marketplace.json` as a legacy-compatible marketplace source. Current OpenAI documentation does not define a precedence contract for a repository that exposes both the native `.agents/plugins/marketplace.json` and the legacy-compatible Claude marketplace.
 
-Local validation:
+For this repository, the intended Codex catalog is `.agents/plugins/marketplace.json`. Do not install `audit-workflow` into Codex merely because another surface happens to discover the Claude registry.
+
+---
+
+# 6. Repository layout relevant to installation
+
+```text
+.claude-plugin/
+└── marketplace.json                  # Claude: all six plugins
+
+.agents/plugins/
+└── marketplace.json                  # OpenAI/Codex: five portable plugins
+
+plugins/
+├── audit-workflow/
+│   ├── .claude-plugin/plugin.json    # 1.2.0
+│   ├── .mcp.json
+│   ├── skills/
+│   │   ├── audit-discovery/
+│   │   ├── audit-triage/
+│   │   ├── audit-resolution/
+│   │   ├── audit-verification/
+│   │   ├── deep-review/
+│   │   └── feature-scattering/
+│   ├── agents/
+│   ├── commands/
+│   ├── hooks/
+│   ├── mcp/
+│   └── scripts/
+│
+├── system-architect/
+│   ├── plugin.json                   # portable/OpenAI manifest, 0.10.0
+│   ├── .claude-plugin/plugin.json
+│   ├── .codex-plugin/plugin.json     # retained compatibility metadata
+│   ├── assets/
+│   └── skills/
+│       ├── architect/
+│       └── recover/
+│
+├── prompt-design/
+│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── .claude-plugin/plugin.json
+│   └── skills/design-prompts/
+│
+├── human-runbooks/
+│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── .claude-plugin/plugin.json
+│   └── skills/human-execution-runbook/
+│
+├── codebase-docs/
+│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── .claude-plugin/plugin.json
+│   └── skills/
+│       ├── code-to-prd/
+│       └── local-wiki/
+│
+└── repo-instructions/
+    ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+    ├── .claude-plugin/plugin.json
+    ├── references/
+    └── skills/
+        ├── init/
+        └── review/
+```
+
+The four new portable plugins intentionally use the canonical root `plugin.json` without adding duplicate `.codex-plugin/plugin.json` compatibility manifests. `system-architect` retains its existing compatibility overlay.
+
+---
+
+# 7. Project-specific runtime and verification boundaries
+
+## `audit-workflow`
+
+- Version `1.2.0`.
+- Requires `python3`; the supported full-runtime Claude Code target remains macOS/Linux.
+- `feature-scattering` helper requires Python 3.10+.
+- Native Windows Claude Code is not claimed as a supported full-runtime target by this repository version.
+- Cowork runtime behavior for Python hooks and the local stdio MCP server is not claimed as verified.
+- Not published in the OpenAI/Codex marketplace.
+- `deep-review` and `feature-scattering` are read-only by default and do not replace the canonical audit lifecycle/runtime.
+
+## `system-architect`
+
+- Version `0.10.0`.
+- Adds optional implementation-planning profiles and `/system-architect:recover` while keeping `/system-architect:architect` canonical.
+- No additional local runtime dependency.
+
+## `prompt-design`
+
+- Version `0.1.0`.
+- Skill/reference-only package; no hooks, MCP server, or helper runtime.
+
+## `human-runbooks`
+
+- Version `0.1.0`.
+- Skill-only package; no persistent state or autonomous runtime.
+
+## `codebase-docs`
+
+- Version `0.1.0`.
+- Python 3.10+ is required for bundled helper scripts.
+- `code-to-prd` analysis and scaffolding are separate operations; a populated scaffold destination is refused rather than recursively replaced.
+- `local-wiki` Markdown operations are standard-library only.
+- Optional HTML rendering uses the skill-local Jinja2/markdown-it-py requirements and runs only when requested/authorized.
+- Helper-backed behavior requires a host with local repository access and Python execution; plugin discovery alone does not prove those operations can run on every chat surface.
+
+## `repo-instructions`
+
+- Version `0.1.0`.
+- `review` is read-only by default.
+- Host instruction-loading behavior is version-sensitive; re-check current host behavior when it differs from this guide.
+
+## Verification boundary
+
+The repository's structural validator, Python compilation, and maintained helper checks are the repository-level validation boundary. Keep structural/package validation separate from installed-host execution:
+
+```text
+package is present and structurally valid
+!=
+plugin behavior has been executed successfully in every target host
+```
+
+---
+
+# 8. Recommended install sets
+
+## Architecture only
+
+Claude:
 
 ```bash
+claude plugin install system-architect@artur-plugins
+```
+
+Codex:
+
+```bash
+codex plugin add system-architect@artur-plugins
+```
+
+## Review / audit on Claude Code
+
+```bash
+claude plugin install audit-workflow@artur-plugins
+```
+
+Start read-only review with:
+
+```text
+/audit-workflow:deep-review
+```
+
+## Portable authoring/tooling set
+
+Claude:
+
+```bash
+claude plugin install prompt-design@artur-plugins
+claude plugin install human-runbooks@artur-plugins
+claude plugin install codebase-docs@artur-plugins
+claude plugin install repo-instructions@artur-plugins
+```
+
+Codex:
+
+```bash
+codex plugin add prompt-design@artur-plugins
+codex plugin add human-runbooks@artur-plugins
+codex plugin add codebase-docs@artur-plugins
+codex plugin add repo-instructions@artur-plugins
+```
+
+There is no requirement to install the entire marketplace. Each plugin is a separate product boundary.
+
+---
+
+# 9. Repository validation
+
+The repository's GitHub Actions workflow validates both marketplace registries, plugin metadata/frontmatter, local package links, manifest identity/version consistency, OpenAI interface/category consistency, required layout invariants, and maintained Python helpers.
+
+Local validation from the repository root:
+
+```bash
+claude plugin validate --strict plugins/audit-workflow
+claude plugin validate --strict plugins/system-architect
 python3 -m pip install PyYAML==6.0.3
 python3 scripts/validate_plugins.py
 python3 -m py_compile \
@@ -157,9 +941,26 @@ python3 -m py_compile \
 python3 -m compileall -q plugins/codebase-docs/skills/local-wiki/scripts
 ```
 
-## Documentation
+`claude plugin validate` validates Claude plugin manifests; `scripts/validate_plugins.py` is this repository's cross-marketplace structural validator. Passing either does not substitute for invoking the installed plugin on the target host.
 
-- Claude Code plugin development: https://code.claude.com/docs/en/plugins/create
-- Claude Code plugin installation and marketplaces: https://code.claude.com/docs/en/plugins/install
+---
+
+# 10. Official references
+
+## Anthropic
+
+- Claude Code plugin installation and management: https://code.claude.com/docs/en/plugins/install
+- Claude Code marketplace hosting and local in-place sources: https://code.claude.com/docs/en/plugins/host-marketplace
 - Claude Code plugin manifest reference: https://code.claude.com/docs/en/plugins-reference
-- OpenAI plugin packaging and repository marketplaces: https://developers.openai.com/plugins/build/plugins
+- Claude app plugins: https://claude.com/docs/plugins/overview
+- Plugin feature support across Claude surfaces: https://claude.com/docs/plugins/platform-support
+- Cowork plugin installation: https://claude.com/docs/cowork/guide/plugins
+
+## OpenAI
+
+- Plugins in ChatGPT and Codex: https://learn.chatgpt.com/docs/plugins
+- Markdown: https://learn.chatgpt.com/docs/plugins.md
+- Codex plugin CLI commands: https://learn.chatgpt.com/docs/developer-commands
+- Markdown: https://learn.chatgpt.com/docs/developer-commands.md
+- Plugin packaging and repository marketplaces: https://developers.openai.com/plugins/build/plugins
+- Plugin architecture: https://developers.openai.com/plugins/concepts/plugins
