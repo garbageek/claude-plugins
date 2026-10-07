@@ -5,8 +5,7 @@
     "email": "arthur.kulik@icloud.com"
   },
   "metadata": {
-    "description": "Evidence-led audit, architecture, prompt design, human runbooks, source-backed documentation, and repository instructions.",
-    "version": "1.2.0"
+    "description": "Evidence-led audit, architecture, prompt design, human runbooks, source-backed documentation, and repository instructions."
   },
   "plugins": [
     {

@@ -6,14 +6,14 @@ This README covers repository-specific installation, plugin usage, runtime notes
 
 ## Plugin catalog
 
-| Plugin | Version | Claude marketplace | OpenAI/Codex marketplace | Entry skills | Runtime requirements |
-|---|---:|---|---|---|---|
-| `audit-workflow` | `1.2.0` | yes | no | `deep-review`, `feature-scattering`, existing audit lifecycle skills | `python3`; `feature-scattering` helper requires Python 3.10+ |
-| `system-architect` | `0.10.0` | yes | yes | `architect`, `recover` | none beyond the host app |
-| `prompt-design` | `0.1.0` | yes | yes | `design-prompts` | none beyond the host app |
-| `human-runbooks` | `0.1.0` | yes | yes | `human-execution-runbook` | none beyond the host app |
-| `codebase-docs` | `0.1.0` | yes | yes | `code-to-prd`, `local-wiki` | Python 3.10+ for helpers; optional HTML wiki rendering also uses skill-local Jinja2/markdown-it-py dependencies |
-| `repo-instructions` | `0.1.0` | yes | yes | `init`, `review` | none beyond the host app |
+| Plugin | Claude marketplace | OpenAI/Codex marketplace | Entry skills | Runtime requirements |
+|---|---|---|---|---|
+| `audit-workflow` | yes | no | `deep-review`, `feature-scattering`, existing audit lifecycle skills | `python3`; `feature-scattering` helper requires Python 3.10+ |
+| `system-architect` | yes | yes | `architect`, `recover` | none beyond the host app |
+| `prompt-design` | yes | yes | `design-prompts` | none beyond the host app |
+| `human-runbooks` | yes | yes | `human-execution-runbook` | none beyond the host app |
+| `codebase-docs` | yes | yes | `code-to-prd`, `local-wiki` | Python 3.10+ for helpers; optional HTML wiki rendering also uses skill-local Jinja2/markdown-it-py dependencies |
+| `repo-instructions` | yes | yes | `init`, `review` | none beyond the host app |
 
 The two repository catalogs intentionally differ:
 
@@ -148,7 +148,7 @@ claude plugin details repo-instructions
 | `codebase-docs` | `/codebase-docs:code-to-prd`, `/codebase-docs:local-wiki` |
 | `repo-instructions` | `/repo-instructions:init`, `/repo-instructions:review` |
 
-### `audit-workflow` 1.2.0
+### `audit-workflow`
 
 Read-only investigation can now start without creating audit state:
 
@@ -189,7 +189,7 @@ From a repository clone:
 python3 plugins/audit-workflow/scripts/audit.py <command> [options]
 ```
 
-### `system-architect` 0.10.0
+### `system-architect`
 
 Use the canonical architecture workflow for normal architecture work:
 
@@ -205,7 +205,7 @@ The architect now includes optional epic, milestone, and roadmap output profiles
 
 Recovery assessment is read-only by default; recovery actions require explicit authorization.
 
-### `prompt-design` 0.1.0
+### `prompt-design`
 
 ```text
 /prompt-design:design-prompts
@@ -213,7 +213,7 @@ Recovery assessment is read-only by default; recovery actions require explicit a
 
 Supports prompt creation, rewrite, diagnosis, adaptation, evaluation, and source-backed service-to-prompt translation.
 
-### `human-runbooks` 0.1.0
+### `human-runbooks`
 
 ```text
 /human-runbooks:human-execution-runbook
@@ -221,7 +221,7 @@ Supports prompt creation, rewrite, diagnosis, adaptation, evaluation, and source
 
 Supports drafting, updating from actual execution evidence, and resuming interrupted human-executed procedures.
 
-### `codebase-docs` 0.1.0
+### `codebase-docs`
 
 ```text
 /codebase-docs:code-to-prd
@@ -232,7 +232,7 @@ Supports drafting, updating from actual execution evidence, and resuming interru
 
 `local-wiki` supports Markdown wiki finalization, validation, Markdown bundle export, and optional offline HTML output. Markdown operations use the standard library. HTML rendering additionally uses the skill-local `Jinja2` and `markdown-it-py` dependency list and should only install those dependencies when authorized.
 
-### `repo-instructions` 0.1.0
+### `repo-instructions`
 
 ```text
 /repo-instructions:init
@@ -311,21 +311,10 @@ claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
 ```
 
-Apply the new versions to an already open session with:
+Apply the updated plugins to an already open session with:
 
 ```text
 /reload-plugins
-```
-
-Expected version changes:
-
-```text
-audit-workflow    1.1.1 -> 1.2.0
-system-architect  0.9.6 -> 0.10.0
-prompt-design              0.1.0 new
-human-runbooks             0.1.0 new
-codebase-docs              0.1.0 new
-repo-instructions          0.1.0 new
 ```
 
 ## 1.7 Remove
@@ -758,7 +747,7 @@ For this repository, the intended Codex catalog is `.agents/plugins/marketplace.
 
 plugins/
 ├── audit-workflow/
-│   ├── .claude-plugin/plugin.json    # 1.2.0
+│   ├── .claude-plugin/plugin.json
 │   ├── .mcp.json
 │   ├── skills/
 │   │   ├── audit-discovery/
@@ -774,7 +763,7 @@ plugins/
 │   └── scripts/
 │
 ├── system-architect/
-│   ├── plugin.json                   # portable/OpenAI manifest, 0.10.0
+│   ├── plugin.json                   # portable/OpenAI manifest
 │   ├── .claude-plugin/plugin.json
 │   ├── .codex-plugin/plugin.json     # retained compatibility metadata
 │   ├── assets/
@@ -783,24 +772,24 @@ plugins/
 │       └── recover/
 │
 ├── prompt-design/
-│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── plugin.json                   # portable/OpenAI manifest
 │   ├── .claude-plugin/plugin.json
 │   └── skills/design-prompts/
 │
 ├── human-runbooks/
-│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── plugin.json                   # portable/OpenAI manifest
 │   ├── .claude-plugin/plugin.json
 │   └── skills/human-execution-runbook/
 │
 ├── codebase-docs/
-│   ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+│   ├── plugin.json                   # portable/OpenAI manifest
 │   ├── .claude-plugin/plugin.json
 │   └── skills/
 │       ├── code-to-prd/
 │       └── local-wiki/
 │
 └── repo-instructions/
-    ├── plugin.json                   # portable/OpenAI manifest, 0.1.0
+    ├── plugin.json                   # portable/OpenAI manifest
     ├── .claude-plugin/plugin.json
     ├── references/
     └── skills/
@@ -816,7 +805,6 @@ The four new portable plugins intentionally use the canonical root `plugin.json`
 
 ## `audit-workflow`
 
-- Version `1.2.0`.
 - Requires `python3`; the supported full-runtime Claude Code target remains macOS/Linux.
 - `feature-scattering` helper requires Python 3.10+.
 - Native Windows Claude Code is not claimed as a supported full-runtime target by this repository version.
@@ -826,23 +814,19 @@ The four new portable plugins intentionally use the canonical root `plugin.json`
 
 ## `system-architect`
 
-- Version `0.10.0`.
 - Adds optional implementation-planning profiles and `/system-architect:recover` while keeping `/system-architect:architect` canonical.
 - No additional local runtime dependency.
 
 ## `prompt-design`
 
-- Version `0.1.0`.
 - Skill/reference-only package; no hooks, MCP server, or helper runtime.
 
 ## `human-runbooks`
 
-- Version `0.1.0`.
 - Skill-only package; no persistent state or autonomous runtime.
 
 ## `codebase-docs`
 
-- Version `0.1.0`.
 - Python 3.10+ is required for bundled helper scripts.
 - `code-to-prd` analysis and scaffolding are separate operations; a populated scaffold destination is refused rather than recursively replaced.
 - `local-wiki` Markdown operations are standard-library only.
@@ -851,7 +835,6 @@ The four new portable plugins intentionally use the canonical root `plugin.json`
 
 ## `repo-instructions`
 
-- Version `0.1.0`.
 - `review` is read-only by default.
 - Host instruction-loading behavior is version-sensitive; re-check current host behavior when it differs from this guide.
 
