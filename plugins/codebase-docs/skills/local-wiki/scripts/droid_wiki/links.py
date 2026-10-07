@@ -4,6 +4,8 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 import re
 
+from .model import anchor_slug
+
 LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
 
@@ -93,17 +95,27 @@ def markdown_link_target_exists(source_file: Path, root: Path, link: str) -> boo
     return markdown_link_failure_reason(source_file, root, link) is None
 
 
+def normalize_fragment_suffix(suffix: str) -> str:
+    if "#" not in suffix:
+        return suffix
+    prefix, fragment = suffix.split("#", 1)
+    slug = anchor_slug(unquote(fragment))
+    return prefix + (f"#{quote(slug, safe='-')}" if slug else "#")
+
+
 def markdown_path_to_html(link: str) -> str:
+    if link.startswith("#"):
+        return normalize_fragment_suffix(link)
     if is_external_link(link):
         return link
     raw_path, suffix = split_link(link)
     if not raw_path:
-        return link
+        return normalize_fragment_suffix(suffix)
     if raw_path.endswith(".md"):
         raw_path = raw_path[:-3] + ".html"
     if raw_path.endswith("/index.html"):
         raw_path = raw_path[: -len("index.html")]
-    return quote(raw_path, safe="/@:+") + suffix
+    return quote(raw_path, safe="/@:+") + normalize_fragment_suffix(suffix)
 
 
 def rewrite_markdown_links(markdown: str) -> str:

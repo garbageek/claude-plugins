@@ -56,10 +56,6 @@ def rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
-def ignored(path: Path) -> bool:
-    return any(part in IGNORED_DIRS for part in path.parts)
-
-
 def walk_files(root: Path, extensions: set[str] = CODE_EXTENSIONS) -> list[Path]:
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -73,7 +69,20 @@ def walk_files(root: Path, extensions: set[str] = CODE_EXTENSIONS) -> list[Path]
 
 def dependency_manifests(root: Path) -> list[Path]:
     names = {"package.json", "requirements.txt", "pyproject.toml", "setup.py", "Pipfile"}
-    return sorted(p for p in root.rglob("*") if p.is_file() and p.name in names and not ignored(p))
+    manifests: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
+        manifests.extend(Path(dirpath) / name for name in filenames if name in names)
+    return sorted(manifests)
+
+
+def named_directories(root: Path, name: str) -> list[Path]:
+    matches: list[Path] = []
+    for dirpath, dirnames, _ in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
+        if name in dirnames:
+            matches.append(Path(dirpath) / name)
+    return sorted(matches)
 
 
 def parse_manifest(manifest: Path) -> tuple[set[str], str | None, dict[str, str]]:
@@ -583,10 +592,10 @@ def analyze_project(project_root: Path) -> dict[str, Any]:
     for scope in scopes:
         if "next" not in scope.frameworks:
             continue
-        for app_dir in [p for p in scope.root.rglob("app") if p.is_dir() and not ignored(p)]:
+        for app_dir in named_directories(scope.root, "app"):
             if any(p.name.startswith("page.") for p in app_dir.rglob("page.*")) or any(p.name.startswith("route.") for p in app_dir.rglob("route.*")):
                 pages, endpoints = next_app_routes(app_dir, root); frontend.extend(pages); backend.extend(endpoints)
-        for pages_dir in [p for p in scope.root.rglob("pages") if p.is_dir() and not ignored(p)]:
+        for pages_dir in named_directories(scope.root, "pages"):
             pages, endpoints = pages_dir_routes(pages_dir, root); frontend.extend(pages); backend.extend(endpoints)
 
     frontend = sorted(dedupe(frontend, ("path", "source")), key=lambda x: (x["path"], x["source"]))

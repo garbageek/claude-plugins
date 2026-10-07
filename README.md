@@ -2,7 +2,7 @@
 
 Plugin marketplace for evidence-led audit, architecture, prompt design, human procedures, source-backed documentation, and repository instructions.
 
-This document consolidates the repository README's installation, plugin overview, runtime notes, and validation commands with the detailed project-specific Claude/Codex installation guide. For generic plugin mechanics that are not specific to this repository, use the separate generic guide.
+This README covers repository-specific installation, plugin usage, runtime notes, and validation.
 
 ## Plugin catalog
 

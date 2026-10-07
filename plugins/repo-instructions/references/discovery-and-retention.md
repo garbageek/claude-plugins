@@ -16,9 +16,9 @@ an executable merely because the executable does something else.
 
 ## Host Loading Reference
 
-The following describes documented host behavior checked on **7 October 2026**,
-not requirements invented by this plugin. Recheck the linked official sources
-when the installed host/version/configuration differs or loading is uncertain.
+The following summarizes documented host behavior, not requirements invented by
+this plugin. Recheck the linked official sources when the installed
+host/version/configuration differs or loading is uncertain.
 
 ### Claude Code
 

@@ -37,7 +37,8 @@ def rewrite_bundle_links(markdown: str, source_page: Page, pages_by_source: dict
         link = match.group(1).strip()
         if is_external_link(link):
             if link.startswith("#"):
-                target = f"#{source_page.id}--{unquote(link[1:])}"
+                slug = anchor_slug(unquote(link[1:]))
+                target = f"#{source_page.id}" + (f"--{slug}" if slug else "")
                 return original[: original.rfind("(") + 1] + target + ")"
             return original
 
@@ -63,8 +64,10 @@ def rewrite_bundle_links(markdown: str, source_page: Page, pages_by_source: dict
             return original
 
         target = f"#{target_page.id}"
-        if suffix.startswith("#"):
-            target = f"#{target_page.id}--{unquote(suffix[1:])}"
+        if "#" in suffix:
+            slug = anchor_slug(unquote(suffix.split("#", 1)[1]))
+            if slug:
+                target = f"#{target_page.id}--{slug}"
         elif raw_path == "":
             target = f"#{source_page.id}"
         return original[: original.rfind("(") + 1] + target + ")"
