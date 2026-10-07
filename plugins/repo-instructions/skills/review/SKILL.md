@@ -43,3 +43,8 @@ rewrite, policy hierarchy invention, or new instruction-file family. Read back
 the result and compare against both source evidence and the original meaning.
 An edit does not prove the host loaded it; record any unverified loading behavior
 without claiming success. For missing-file creation, use [init](../init/SKILL.md).
+
+For repository-specific **GitHub Copilot Code Review customization**, use
+[copilot-review-customizer](../copilot-review-customizer/SKILL.md). That workflow
+selects Copilot's review surfaces and uses review/regression history; it does not
+change this skill's Claude/Codex initialization or instruction-review contract.

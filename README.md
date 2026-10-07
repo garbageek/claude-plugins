@@ -1,6 +1,6 @@
 # claude-plugins
 
-Plugin marketplace for evidence-led audit, architecture, prompt design, human procedures, source-backed documentation, and repository instructions.
+Plugin marketplace for evidence-led audit, architecture, prompt design, prose editing, human procedures, source-backed documentation, and repository/Copilot review instructions.
 
 This README covers repository-specific installation, plugin usage, runtime notes, and validation.
 
@@ -13,7 +13,8 @@ This README covers repository-specific installation, plugin usage, runtime notes
 | `prompt-design` | yes | yes | `design-prompts` | none beyond the host app |
 | `human-runbooks` | yes | yes | `human-execution-runbook` | none beyond the host app |
 | `codebase-docs` | yes | yes | `code-to-prd`, `local-wiki` | Python 3.10+ for helpers; optional HTML wiki rendering also uses skill-local Jinja2/markdown-it-py dependencies |
-| `repo-instructions` | yes | yes | `init`, `review` | none beyond the host app |
+| `repo-instructions` | yes | yes | `init`, `review`, `copilot-review-customizer` | No bundled runtime; Copilot customization needs current GitHub docs and repository/history access or supplied source evidence |
+| `humanizer` | yes | yes | `humanizer` | none beyond the host app |
 
 The two repository catalogs intentionally differ:
 
@@ -25,6 +26,7 @@ Claude marketplace:  .claude-plugin/marketplace.json
     -> human-runbooks
     -> codebase-docs
     -> repo-instructions
+    -> humanizer
 
 OpenAI marketplace:  .agents/plugins/marketplace.json
     -> system-architect
@@ -32,11 +34,12 @@ OpenAI marketplace:  .agents/plugins/marketplace.json
     -> human-runbooks
     -> codebase-docs
     -> repo-instructions
+    -> humanizer
 ```
 
 `audit-workflow` is intentionally not published for Codex. Adding portable skills to it did not make its hooks, MCP runtime, or lifecycle integration Codex-compatible.
 
-The five portable packages are published through the OpenAI/Codex repository marketplace as shown above. Repository validation and local helper execution are not equivalent to installed-host execution on every Claude/Codex surface.
+The six portable packages are published through the OpenAI/Codex repository marketplace as shown above. Repository validation and local helper execution are not equivalent to installed-host execution on every Claude/Codex surface.
 
 ---
 
@@ -67,6 +70,7 @@ Install only the plugins you need:
 /plugin install human-runbooks@artur-plugins
 /plugin install codebase-docs@artur-plugins
 /plugin install repo-instructions@artur-plugins
+/plugin install humanizer@artur-plugins
 ```
 
 Shell equivalents:
@@ -78,6 +82,7 @@ claude plugin install prompt-design@artur-plugins
 claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
+claude plugin install humanizer@artur-plugins
 ```
 
 Each interactive `/plugin install ...` opens plugin details first so you can review the package and choose the installation scope.
@@ -135,6 +140,7 @@ claude plugin details prompt-design
 claude plugin details human-runbooks
 claude plugin details codebase-docs
 claude plugin details repo-instructions
+claude plugin details humanizer
 ```
 
 ### Skill entry points
@@ -146,10 +152,10 @@ claude plugin details repo-instructions
 | `prompt-design` | `/prompt-design:design-prompts` |
 | `human-runbooks` | `/human-runbooks:human-execution-runbook` |
 | `codebase-docs` | `/codebase-docs:code-to-prd`, `/codebase-docs:local-wiki` |
-| `repo-instructions` | `/repo-instructions:init`, `/repo-instructions:review` |
+| `repo-instructions` | `/repo-instructions:init`, `/repo-instructions:review`, `/repo-instructions:copilot-review-customizer` |
+| `humanizer` | `/humanizer:humanizer` |
 
 ### `audit-workflow`
-
 Read-only investigation can now start without creating audit state:
 
 ```text
@@ -157,7 +163,7 @@ Read-only investigation can now start without creating audit state:
 /audit-workflow:feature-scattering
 ```
 
-`deep-review` can route to click-path, test-quality, and operator-surface analysis when relevant. `feature-scattering` uses its bundled scanner but does not create tickets by default.
+`deep-review` checks the reported path, affected consumers, and independent failure possibilities within the requested scope. It preserves product intent, distinguishes unfamiliar mechanisms from unnecessary ones, and can route to click-path, test-quality, and operator-surface analysis when relevant. `feature-scattering` uses its bundled scanner but does not create tickets by default.
 
 Ticket-lifecycle first run remains:
 
@@ -190,7 +196,6 @@ python3 plugins/audit-workflow/scripts/audit.py <command> [options]
 ```
 
 ### `system-architect`
-
 Use the canonical architecture workflow for normal architecture work:
 
 ```text
@@ -206,7 +211,6 @@ The architect now includes optional epic, milestone, and roadmap output profiles
 Recovery assessment is read-only by default; recovery actions require explicit authorization.
 
 ### `prompt-design`
-
 ```text
 /prompt-design:design-prompts
 ```
@@ -214,15 +218,13 @@ Recovery assessment is read-only by default; recovery actions require explicit a
 Supports prompt creation, rewrite, diagnosis, adaptation, evaluation, and source-backed service-to-prompt translation.
 
 ### `human-runbooks`
-
 ```text
 /human-runbooks:human-execution-runbook
 ```
 
-Supports drafting, updating from actual execution evidence, and resuming interrupted human-executed procedures.
+Supports drafting, updating from actual execution evidence, and resuming interrupted human-executed procedures. Small procedures remain compact. Staged procedures define entry conditions, durable exits, and re-entry evidence; a final consistency check covers the affected sequence without claiming the human performed it.
 
 ### `codebase-docs`
-
 ```text
 /codebase-docs:code-to-prd
 /codebase-docs:local-wiki
@@ -233,13 +235,24 @@ Supports drafting, updating from actual execution evidence, and resuming interru
 `local-wiki` supports Markdown wiki finalization, validation, Markdown bundle export, and optional offline HTML output. Markdown operations use the standard library. HTML rendering additionally uses the skill-local `Jinja2` and `markdown-it-py` dependency list and should only install those dependencies when authorized.
 
 ### `repo-instructions`
-
 ```text
 /repo-instructions:init
 /repo-instructions:review
+/repo-instructions:copilot-review-customizer
 ```
 
 `init` creates instructions only for the requested host/scope. `review` is read-only by default and checks actual repository evidence plus current Claude/Codex instruction-loading behavior.
+
+[copilot-review-customizer](plugins/repo-instructions/skills/copilot-review-customizer/SKILL.md) researches a concrete repository, mines usable review/regression history, and chooses the minimum Copilot Code Review customization. It supports analysis, complete files with placement paths, or an explicitly requested PR. Its contract ledger and three local references remain part of the workflow. Live GitHub documentation must confirm any mechanism it relies on; the mechanics reference is a starting point, not a reason to skip verification.
+
+Installing `repo-instructions` supplies the **customizer**, not a review skill already installed in another repository. The customizer may produce `.github/skills/code-review/SKILL.md` in the selected project, update another appropriate surface, or conclude no change is needed. It needs documentation access and repository/history evidence; it prefers a GitHub connector and requests archives, a checkout, or command output when that access is unavailable. No GitHub connection, credentials, settings changes, or automatic reviews are provisioned by this package. Preparing files and confirming documented loading do not prove Copilot used them or improved a real review.
+
+### `humanizer`
+```text
+/humanizer:humanizer
+```
+
+[humanizer](plugins/humanizer/skills/humanizer/SKILL.md) detects, rewrites, or edits formulaic prose when writing quality is requested. It handles technical documentation, PR descriptions, review comments, messages, and other prose while preserving meaning, certainty, code, identifiers, numbers, citations, and the sender's authority and commitments. Detect mode does not rewrite; already-clear text may remain unchanged. This is prose editing, not prompt design, an authorship detector, or an automatic filter on unrelated answers.
 
 ## 1.4 Enable or disable
 
@@ -309,6 +322,7 @@ claude plugin install prompt-design@artur-plugins
 claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
+claude plugin install humanizer@artur-plugins
 ```
 
 Apply the updated plugins to an already open session with:
@@ -389,7 +403,7 @@ or:
 https://github.com/garbageek/claude-plugins
 ```
 
-The `artur-plugins` Claude marketplace then exposes all six plugins:
+The `artur-plugins` Claude marketplace then exposes all seven plugins:
 
 ```text
 audit-workflow
@@ -398,6 +412,7 @@ prompt-design
 human-runbooks
 codebase-docs
 repo-instructions
+humanizer
 ```
 
 The repository does not contain prebuilt per-plugin `.plugin` release archives, so the repository-marketplace path is the canonical installation path documented here.
@@ -416,7 +431,7 @@ The reverse does not happen automatically: a plugin installed only with `/plugin
 
 ### Skill-focused portable plugins
 
-`system-architect`, `prompt-design`, `human-runbooks`, and `repo-instructions` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
+`system-architect`, `prompt-design`, `human-runbooks`, `repo-instructions`, and `humanizer` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
 
 ### `codebase-docs`
 
@@ -442,7 +457,7 @@ The native repository marketplace is:
 .agents/plugins/marketplace.json
 ```
 
-It contains five plugins:
+It contains six plugins:
 
 ```text
 system-architect
@@ -450,6 +465,7 @@ prompt-design
 human-runbooks
 codebase-docs
 repo-instructions
+humanizer
 ```
 
 `audit-workflow` is intentionally absent.
@@ -476,6 +492,7 @@ codex plugin add prompt-design@artur-plugins
 codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
+codex plugin add humanizer@artur-plugins
 ```
 
 Equivalent explicit marketplace form for any one plugin:
@@ -556,6 +573,7 @@ codex plugin add prompt-design@artur-plugins
 codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
+codex plugin add humanizer@artur-plugins
 ```
 
 There is no separate documented `codex plugin update` subcommand. If an already installed `system-architect` remains on the older cached version after marketplace refresh, remove and add it again:
@@ -623,6 +641,7 @@ Inside Claude Code from the repository root:
 /plugin install human-runbooks@artur-plugins
 /plugin install codebase-docs@artur-plugins
 /plugin install repo-instructions@artur-plugins
+/plugin install humanizer@artur-plugins
 /reload-plugins
 ```
 
@@ -637,6 +656,7 @@ claude --plugin-dir ./plugins/prompt-design
 claude --plugin-dir ./plugins/human-runbooks
 claude --plugin-dir ./plugins/codebase-docs
 claude --plugin-dir ./plugins/repo-instructions
+claude --plugin-dir ./plugins/humanizer
 ```
 
 Use one `--plugin-dir` target per development session unless deliberately testing several plugin directories together.
@@ -658,6 +678,7 @@ codex plugin add prompt-design@artur-plugins
 codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
+codex plugin add humanizer@artur-plugins
 ```
 
 For local marketplace installs, the runtime copy is cached under:
@@ -682,7 +703,7 @@ If source changes are not reflected, refresh/reinstall the plugin and restart th
 
 ## 4.3 Repo-local Codex enablement
 
-The repository marketplace makes the five portable plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
+The repository marketplace makes the six portable plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
 
 ```toml
 [plugins."system-architect@artur-plugins"]
@@ -698,6 +719,9 @@ enabled = true
 enabled = true
 
 [plugins."repo-instructions@artur-plugins"]
+enabled = true
+
+[plugins."humanizer@artur-plugins"]
 enabled = true
 ```
 
@@ -718,6 +742,7 @@ Codex reads project `.codex/config.toml` only for trusted projects.
     -> human-runbooks
     -> codebase-docs
     -> repo-instructions
+    -> humanizer
 
 .agents/plugins/marketplace.json
     OpenAI-native repository marketplace
@@ -726,6 +751,7 @@ Codex reads project `.codex/config.toml` only for trusted projects.
     -> human-runbooks
     -> codebase-docs
     -> repo-instructions
+    -> humanizer
 ```
 
 Both marketplaces are named `artur-plugins`, but they intentionally target different hosts and expose different plugin sets.
@@ -740,10 +766,10 @@ For this repository, the intended Codex catalog is `.agents/plugins/marketplace.
 
 ```text
 .claude-plugin/
-└── marketplace.json                  # Claude: all six plugins
+└── marketplace.json                  # Claude: all seven plugins
 
 .agents/plugins/
-└── marketplace.json                  # OpenAI/Codex: five portable plugins
+└── marketplace.json                  # OpenAI/Codex: six portable plugins
 
 plugins/
 ├── audit-workflow/
@@ -788,16 +814,24 @@ plugins/
 │       ├── code-to-prd/
 │       └── local-wiki/
 │
-└── repo-instructions/
+├── repo-instructions/
+│   ├── plugin.json                   # portable/OpenAI manifest
+│   ├── .claude-plugin/plugin.json
+│   ├── references/
+│   └── skills/
+│       ├── init/
+│       ├── review/
+│       └── copilot-review-customizer/
+│           ├── SKILL.md
+│           └── references/
+│
+└── humanizer/
     ├── plugin.json                   # portable/OpenAI manifest
     ├── .claude-plugin/plugin.json
-    ├── references/
-    └── skills/
-        ├── init/
-        └── review/
+    └── skills/humanizer/SKILL.md
 ```
 
-The four new portable plugins intentionally use the canonical root `plugin.json` without adding duplicate `.codex-plugin/plugin.json` compatibility manifests. `system-architect` retains its existing compatibility overlay.
+The five portable plugins other than `system-architect` intentionally use the canonical root `plugin.json` without adding duplicate `.codex-plugin/plugin.json` compatibility manifests. `system-architect` retains its existing compatibility overlay.
 
 ---
 
@@ -837,6 +871,12 @@ The four new portable plugins intentionally use the canonical root `plugin.json`
 
 - `review` is read-only by default.
 - Host instruction-loading behavior is version-sensitive; re-check current host behavior when it differs from this guide.
+- `copilot-review-customizer` targets GitHub Copilot Code Review customization, not generic instruction maintenance. It requires live documentation and repository evidence; connection availability and requested writes are separate concerns.
+
+## `humanizer`
+
+- Skill-only prose editor; no runtime, hooks, MCP server, or automatic processing of other skills' output.
+- Content accuracy and protected technical spans take precedence over stylistic changes.
 
 ## Verification boundary
 
@@ -887,6 +927,7 @@ claude plugin install prompt-design@artur-plugins
 claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
+claude plugin install humanizer@artur-plugins
 ```
 
 Codex:
@@ -896,6 +937,7 @@ codex plugin add prompt-design@artur-plugins
 codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
+codex plugin add humanizer@artur-plugins
 ```
 
 There is no requirement to install the entire marketplace. Each plugin is a separate product boundary.

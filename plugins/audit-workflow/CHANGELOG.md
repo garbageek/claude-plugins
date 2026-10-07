@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Added an independent, scope-bounded review pass and explicit checks against redefining product intent or treating unfamiliar mechanisms as unnecessary.
+- Expanded relevant failure-path checks and added a final evidence/coverage self-check. Review stays read-only; the audit runtime, lifecycle roles, hooks, and MCP integration are unchanged.
+
 ## 1.2.0
 
 - Added read-only `deep-review` with click-path, existing-test-quality, and operator-surface lenses; ticketization remains an explicit canonical-runtime handoff.

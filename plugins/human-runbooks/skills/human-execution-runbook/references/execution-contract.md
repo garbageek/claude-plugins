@@ -42,6 +42,16 @@ Use status/result/decision fields when execution state is being tracked. Active 
 
 Split steps when they can fail independently, cross authority/system boundaries, require intervening judgment, or have different verification/recovery. Do not split every trivial click. For larger procedures, group only at durable resumable boundaries, never mid-mutation or before required verification.
 
+## Stage boundaries — only for a staged procedure
+
+Use stages when a long procedure genuinely pauses or hands off at a durable state; do not add them to a small continuous sequence. At each stage record:
+
+- **Entry condition:** the prior state/evidence required to start, including any pre-check that must be refreshed on re-entry.
+- **Durable exit:** the verified state that makes leaving and later resuming valid.
+- **External work while away:** what actually continues, or none, with its observation/re-entry trigger.
+
+The stage's final step records the evidence establishing its durable exit and the next permitted action. Do not end a stage mid-mutation or before immediate verification. On resumption, check that the recorded exit still holds; stale or contradictory evidence follows the existing classification/re-check path instead of silently repeating the mutation. Keep active human time separate from external waiting using the step and wait contracts above and below, not invented stage durations.
+
 ## Action classes and recovery
 
 | Class | Required handling |

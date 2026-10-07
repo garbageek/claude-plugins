@@ -32,3 +32,8 @@ loading rules; do not invent a second precedence policy here.
 Use [review](../review/SKILL.md) when the task is primarily to assess an existing
 file. No ancillary reports, inventories, configuration changes, ready-made file
 matrix, hooks, or all-purpose “AI-ready” operation are part of initialization.
+
+For repository-specific **GitHub Copilot Code Review customization**, use
+[copilot-review-customizer](../copilot-review-customizer/SKILL.md). That workflow
+selects Copilot's review surfaces and uses review/regression history; it does not
+change this skill's Claude/Codex initialization or instruction-review contract.

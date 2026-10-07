@@ -1,7 +1,7 @@
 {
   "name": "audit-workflow",
   "displayName": "Audit Workflow",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Evidence-first audit lifecycle with read-only deep review, feature-scattering analysis, shared fix proof, independent verification, hooks, and MCP tools.",
   "author": {
     "name": "Artur Kulik",

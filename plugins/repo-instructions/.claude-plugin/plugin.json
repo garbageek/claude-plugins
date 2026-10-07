@@ -1,7 +1,7 @@
 {
   "name": "repo-instructions",
-  "version": "0.1.0",
-  "description": "Create and review scoped Claude/Codex repository instructions from actual commands and boundaries while preserving useful existing guidance.",
+  "version": "0.2.0",
+  "description": "Create and review scoped Claude/Codex repository instructions, and design repository-specific GitHub Copilot Code Review customization from source and review history.",
   "author": {
     "name": "Artur Kulik",
     "url": "https://mycmdline.com"
@@ -11,6 +11,8 @@
     "agents-md",
     "claude-md",
     "instructions",
-    "repository"
+    "repository",
+    "copilot",
+    "code-review"
   ]
 }

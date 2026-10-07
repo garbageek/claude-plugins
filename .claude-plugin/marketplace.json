@@ -5,7 +5,7 @@
     "email": "arthur.kulik@icloud.com"
   },
   "metadata": {
-    "description": "Evidence-led audit, architecture, prompt design, human runbooks, source-backed documentation, and repository instructions."
+    "description": "Evidence-led audit, architecture, prompts, prose editing, human runbooks, source-backed documentation, and repository/Copilot review instructions."
   },
   "plugins": [
     {
@@ -41,8 +41,14 @@
     {
       "name": "repo-instructions",
       "source": "./plugins/repo-instructions",
-      "description": "Create and review scoped Claude/Codex repository instructions from actual commands and boundaries while preserving useful existing guidance.",
+      "description": "Create and review scoped Claude/Codex repository instructions, and design repository-specific GitHub Copilot Code Review customization from source and review history.",
       "category": "development"
+    },
+    {
+      "name": "humanizer",
+      "source": "./plugins/humanizer",
+      "description": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice.",
+      "category": "productivity"
     }
   ]
 }
