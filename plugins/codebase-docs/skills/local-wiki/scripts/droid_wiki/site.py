@@ -17,8 +17,6 @@ SITE_MARKER = ".droid-wiki-site"
 
 def html_output_path(out_dir: Path, page_path: str) -> Path:
     rel = Path(page_path)
-    if rel.name == "index.md":
-        return out_dir / rel.with_suffix(".html")
     return out_dir / rel.with_suffix(".html")
 
 

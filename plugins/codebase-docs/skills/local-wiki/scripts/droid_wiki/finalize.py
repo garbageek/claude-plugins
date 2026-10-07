@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 import subprocess
 import re
 from pathlib import Path
@@ -69,7 +70,7 @@ def index_intro(directory: Path, root: Path) -> str:
 
 def relative_link(from_file: Path, to_file: Path) -> str:
     return Path(to_file).relative_to(from_file.parent).as_posix() if to_file.parent == from_file.parent else Path(
-        __import__("os").path.relpath(to_file, start=from_file.parent)
+        os.path.relpath(to_file, start=from_file.parent)
     ).as_posix()
 
 
