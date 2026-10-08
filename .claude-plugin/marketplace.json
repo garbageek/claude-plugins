@@ -61,6 +61,12 @@
       "source": "./plugins/uncompromising-handover",
       "description": "Produce a self-contained, high-fidelity context handover for continuing an active coding task across agents, models, and sessions.",
       "category": "productivity"
+    },
+    {
+      "name": "artur-plugin-creator",
+      "source": "./plugins/artur-plugin-creator",
+      "description": "Create, inspect, and update Claude Code and Codex plugins from source or archives, with optional guarded publication through Plugin Creator.",
+      "category": "development"
     }
   ]
 }

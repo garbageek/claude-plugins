@@ -1,0 +1,15 @@
+{
+  "name": "artur-plugin-creator",
+  "version": "0.2.0",
+  "description": "Create, inspect, and update Claude Code and Codex plugins from source or archives, with optional guarded publication through Plugin Creator.",
+  "author": {
+    "name": "Artur Kulik"
+  },
+  "keywords": [
+    "plugins",
+    "claude-code",
+    "codex",
+    "plugin-authoring"
+  ],
+  "displayName": "Artur Plugin Creator"
+}

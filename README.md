@@ -1,6 +1,6 @@
 # claude-plugins
 
-Plugin marketplace for evidence-led audit, architecture, prompts, prose editing, human procedures, source-backed documentation, repository/Copilot review instructions, Codex server operations, and coding-session handovers.
+Plugin marketplace for evidence-led audit, architecture, prompts, prose editing, human procedures, source-backed documentation, repository/Copilot review instructions, Codex server operations, coding-session handovers, and cross-platform plugin authoring.
 
 This README covers repository-specific installation, plugin usage, runtime notes, and validation.
 
@@ -17,8 +17,9 @@ This README covers repository-specific installation, plugin usage, runtime notes
 | `humanizer` | yes | yes | `humanizer` | none beyond the host app |
 | `codex-ubuntu-server` | yes | yes | `codex-ubuntu-server` | Target Ubuntu host, shell/SSH access, and Codex CLI for maintenance; no bundled local runtime |
 | `uncompromising-handover` | yes | yes | `uncompromising-handover` | none beyond the host app; checkpoint delivery requires a writable/accessibly shared location |
+| `artur-plugin-creator` | yes | yes | `create-plugin`, `inspect-plugin`, `update-plugin` | Source/file tools for authoring; Plugin Creator backend only for requested hosted operations |
 
-Both marketplaces expose the same nine plugins. `audit-workflow` includes a
+Both marketplaces expose the same plugins listed above. `audit-workflow` includes a
 local Python/MCP runtime and host-specific hook configurations; Codex hooks must
 be reviewed and trusted before they run. Repository validation is not proof of
 installed-host behavior.
@@ -55,6 +56,7 @@ Install only the plugins you need:
 /plugin install humanizer@artur-plugins
 /plugin install codex-ubuntu-server@artur-plugins
 /plugin install uncompromising-handover@artur-plugins
+/plugin install artur-plugin-creator@artur-plugins
 ```
 
 Shell equivalents:
@@ -69,6 +71,7 @@ claude plugin install repo-instructions@artur-plugins
 claude plugin install humanizer@artur-plugins
 claude plugin install codex-ubuntu-server@artur-plugins
 claude plugin install uncompromising-handover@artur-plugins
+claude plugin install artur-plugin-creator@artur-plugins
 ```
 
 Each interactive `/plugin install ...` opens plugin details first so you can review the package and choose the installation scope.
@@ -129,6 +132,7 @@ claude plugin details repo-instructions
 claude plugin details humanizer
 claude plugin details codex-ubuntu-server
 claude plugin details uncompromising-handover
+claude plugin details artur-plugin-creator
 ```
 
 ### Skill entry points
@@ -144,6 +148,7 @@ claude plugin details uncompromising-handover
 | `humanizer` | `/humanizer:humanizer` |
 | `codex-ubuntu-server` | `/codex-ubuntu-server:codex-ubuntu-server` |
 | `uncompromising-handover` | `/uncompromising-handover:uncompromising-handover` |
+| `artur-plugin-creator` | `/artur-plugin-creator:create-plugin`, `/artur-plugin-creator:inspect-plugin`, `/artur-plugin-creator:update-plugin` |
 
 ### `audit-workflow`
 Read-only investigation can now start without creating audit state:
@@ -252,6 +257,20 @@ Use `/codex-ubuntu-server:codex-ubuntu-server` to administer Codex CLI on a sele
 
 Use `/uncompromising-handover:uncompromising-handover` to create a self-contained continuation checkpoint for an active coding task. The bundled template is the source of the output format; checkpoint files are versioned and must not be committed automatically.
 
+### `artur-plugin-creator`
+
+[Artur Plugin Creator](plugins/artur-plugin-creator/skills/create-plugin/SKILL.md)
+creates, inspects, and updates plugins for Claude Code, Codex, or both. A dual package
+uses root `plugin.json`, `.claude-plugin/plugin.json`, and shared skills; required
+MCP, hooks, or agents need real host adapters rather than a compatibility label.
+Local repository/archive work does not require the Plugin Creator backend.
+
+Use `create-plugin` for a new package, `inspect-plugin` for read-only inspection,
+and `update-plugin` for changes or conversion. Hosted publication is optional and
+requires the separately connected backend. Updates use release guards and explicit
+`delete_paths`; omitting a file from an upload is not deletion. Preparing an archive
+does not publish to a Claude account, an OpenAI account, GitHub, or a public directory.
+
 ## 1.4 Enable or disable
 
 Use the same command for any plugin:
@@ -321,6 +340,7 @@ claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
 claude plugin install humanizer@artur-plugins
+claude plugin install artur-plugin-creator@artur-plugins
 ```
 
 Apply the updated plugins to an already open session with:
@@ -419,7 +439,7 @@ The reverse does not happen automatically: a plugin installed only with `/plugin
 
 ### Skill-focused portable plugins
 
-`system-architect`, `prompt-design`, `human-runbooks`, `repo-instructions`, `humanizer`, and `uncompromising-handover` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
+`system-architect`, `prompt-design`, `human-runbooks`, `repo-instructions`, `humanizer`, `uncompromising-handover`, and `artur-plugin-creator` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
 
 ### `codebase-docs`
 
@@ -474,6 +494,7 @@ codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
 codex plugin add codex-ubuntu-server@artur-plugins
 codex plugin add uncompromising-handover@artur-plugins
+codex plugin add artur-plugin-creator@artur-plugins
 ```
 
 Equivalent explicit marketplace form for any one plugin:
@@ -568,7 +589,7 @@ codex plugin marketplace upgrade artur-plugins
 codex plugin list --marketplace artur-plugins --available --json
 ```
 
-Install the four newly available portable products as desired:
+Install additional portable products as needed:
 
 ```bash
 codex plugin add prompt-design@artur-plugins
@@ -576,6 +597,7 @@ codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
+codex plugin add artur-plugin-creator@artur-plugins
 ```
 
 There is no separate documented `codex plugin update` subcommand. If an already installed `system-architect` remains on the older cached version after marketplace refresh, remove and add it again:
@@ -646,6 +668,7 @@ Inside Claude Code from the repository root:
 /plugin install humanizer@artur-plugins
 /plugin install codex-ubuntu-server@artur-plugins
 /plugin install uncompromising-handover@artur-plugins
+/plugin install artur-plugin-creator@artur-plugins
 /reload-plugins
 ```
 
@@ -663,6 +686,7 @@ claude --plugin-dir ./plugins/repo-instructions
 claude --plugin-dir ./plugins/humanizer
 claude --plugin-dir ./plugins/codex-ubuntu-server
 claude --plugin-dir ./plugins/uncompromising-handover
+claude --plugin-dir ./plugins/artur-plugin-creator
 ```
 
 Use one `--plugin-dir` target per development session unless deliberately testing several plugin directories together.
@@ -687,6 +711,7 @@ codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
 codex plugin add codex-ubuntu-server@artur-plugins
 codex plugin add uncompromising-handover@artur-plugins
+codex plugin add artur-plugin-creator@artur-plugins
 ```
 
 For local marketplace installs, the runtime copy is cached under:
@@ -711,7 +736,7 @@ If source changes are not reflected, refresh/reinstall the plugin and restart th
 
 ## 4.3 Repo-local Codex enablement
 
-The repository marketplace makes all nine plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
+The repository marketplace makes the listed plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
 
 ```toml
 [plugins."audit-workflow@artur-plugins"]
@@ -740,6 +765,9 @@ enabled = true
 
 [plugins."uncompromising-handover@artur-plugins"]
 enabled = true
+
+[plugins."artur-plugin-creator@artur-plugins"]
+enabled = true
 ```
 
 Set any entry to `false` to disable it for the project without uninstalling it.
@@ -764,10 +792,10 @@ configuration selects the appropriate MCP and hooks integration for each host.
 
 ```text
 .claude-plugin/
-└── marketplace.json                  # Claude: all nine plugins
+└── marketplace.json                  # Claude marketplace
 
 .agents/plugins/
-└── marketplace.json                  # OpenAI/Codex: all nine plugins
+└── marketplace.json                  # OpenAI/Codex marketplace
 
 plugins/
 ├── audit-workflow/
@@ -839,6 +867,15 @@ plugins/
 │       ├── agents/openai.yaml
 │       └── assets/icon.svg
 │
+├── artur-plugin-creator/
+│   ├── plugin.json                   # portable/OpenAI manifest
+│   ├── .claude-plugin/plugin.json
+│   ├── references/platform-contracts.md
+│   └── skills/
+│       ├── create-plugin/
+│       ├── inspect-plugin/
+│       └── update-plugin/
+│
 └── uncompromising-handover/
     ├── plugin.json                   # portable/OpenAI manifest
     ├── .claude-plugin/plugin.json
@@ -903,6 +940,13 @@ The portable plugins other than `system-architect` use the canonical root `plugi
 
 - Skill and template only. A completed checkpoint must be readable by its recipient; a local file path alone is not proof of transfer.
 
+## `artur-plugin-creator`
+
+- Shared instruction skills, not a bundled Plugin Creator service. Source/ZIP work
+  uses the host's file tools; live inspection/publication needs separately connected
+  backend tools. Backend IDs, release guards, and hosted results do not apply to a
+  local archive. Claimed host behavior still requires actual host execution.
+
 ## Verification boundary
 
 The repository's structural validator, Python compilation, and maintained helper checks are the repository-level validation boundary. Keep structural/package validation separate from installed-host execution:
@@ -952,6 +996,7 @@ claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
 claude plugin install humanizer@artur-plugins
 claude plugin install uncompromising-handover@artur-plugins
+claude plugin install artur-plugin-creator@artur-plugins
 ```
 
 Codex:
@@ -963,6 +1008,7 @@ codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
 codex plugin add uncompromising-handover@artur-plugins
+codex plugin add artur-plugin-creator@artur-plugins
 ```
 
 For Codex administration on Ubuntu, install `codex-ubuntu-server@artur-plugins` separately with the appropriate Claude or Codex plugin command.
