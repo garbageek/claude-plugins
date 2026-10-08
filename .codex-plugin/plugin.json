@@ -1,0 +1,38 @@
+{
+  "name": "artur-plugins",
+  "version": "1.0.0",
+  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "repository": "https://github.com/garbageek/claude-plugins",
+  "keywords": [
+    "engineering",
+    "architecture",
+    "audit",
+    "skills",
+    "documentation",
+    "plugins"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/codex.json",
+  "mcpServers": "./mcp/codex.json",
+  "interface": {
+    "displayName": "Artur Plugins",
+    "shortDescription": "Practical engineering workflows for agents",
+    "longDescription": "One shared skills library for architecture, audits, codebase documentation, repository guidance, prompts, prose, human runbooks, server operations, handover, and plugin authoring. Audit lifecycle actions use the existing Python runtime and MCP server. Skills load on demand; hook execution requires local Python and host trust. External publishing and server access remain optional, separately authorized integrations.",
+    "developerName": "Artur Kulik",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Review this repository without changing files.",
+      "Design an implementation-ready architecture for this task.",
+      "Create or update a plugin for Claude Code and Codex."
+    ]
+  }
+}
