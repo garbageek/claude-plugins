@@ -162,7 +162,9 @@ def _edits_change_status(tool_input: dict, payload: dict) -> bool:
 
 
 def _status_fields(markdown: str) -> list[str]:
-    return [line for line in markdown.splitlines() if STATUS_FIELD_RE.match(line)]
+    # Match audit.py's canonical header boundary, never status examples in evidence.
+    header = re.split(r"(?m)^##(?:\s|$)", markdown, maxsplit=1)[0]
+    return [line for line in header.splitlines() if STATUS_FIELD_RE.match(line)]
 
 
 # A segment that runs the bundled runtime (`python3 ".../scripts/audit.py" verify ...`)
@@ -267,21 +269,58 @@ STATUS_FIELD_RE = re.compile(r"^\s*(?:\*\*(?:Verification\s+)?Status:\*\*|(?:Ver
 def _patch_changes(command: str) -> list[dict]:
     changes: list[dict] = []
     current = None
+    hunk = None
     for line in command.splitlines():
         match = PATCH_FILE_RE.match(line)
         if match:
-            current = {"operation": match[1], "paths": [match[2]], "lines": []}
+            current = {"operation": match[1], "paths": [match[2]], "hunks": []}
             changes.append(current)
+            hunk = None
         elif line == "*** End Patch":
             current = None
+            hunk = None
         elif current is not None:
             move = PATCH_MOVE_RE.match(line)
             if move:
                 current["operation"] = "Move"
                 current["paths"].append(move[1])
-            elif line.startswith(("+", "-")):
-                current["lines"].append(line[1:])
+            elif line.startswith("@@"):
+                hunk = []
+                current["hunks"].append(hunk)
+            elif line.startswith(("+", "-", " ")) or line == "":
+                if hunk is None:
+                    hunk = []
+                    current["hunks"].append(hunk)
+                hunk.append(line or " ")
     return changes
+
+
+def _project_patch(original: str, hunks: list[list[str]]) -> str | None:
+    """Project exact, unambiguous audit edits without executing a patch command.
+
+    Unsupported/fuzzy/context-free hunks fail closed on managed records. The
+    actual host still applies its own patch; this is only a before/after guard.
+    """
+    source = original.splitlines()
+    result: list[str] = []
+    cursor = 0
+    if not hunks:
+        return None
+    for hunk in hunks:
+        before = [line[1:] for line in hunk if line.startswith((" ", "-"))]
+        after = [line[1:] for line in hunk if line.startswith((" ", "+"))]
+        if not before:
+            return None
+        positions = [i for i in range(cursor, len(source) - len(before) + 1)
+                     if source[i:i + len(before)] == before]
+        if len(positions) != 1:
+            return None
+        position = positions[0]
+        result.extend(source[cursor:position])
+        result.extend(after)
+        cursor = position + len(before)
+    result.extend(source[cursor:])
+    return "\n".join(result) + ("\n" if original.endswith("\n") else "")
 
 
 def _is_audit_record(path: str, payload: dict) -> bool:
@@ -317,9 +356,27 @@ def _patch_audit_changes(payload: dict) -> list[dict]:
 
 
 def _unsafe_audit_patch(payload: dict) -> bool:
-    return any(change["operation"] != "Update" or any(
-        STATUS_FIELD_RE.search(line) for line in change["lines"])
-        for change in _patch_audit_changes(payload))
+    seen: set[Path] = set()
+    cwd = payload.get("cwd")
+    base = Path(cwd).expanduser() if isinstance(cwd, str) and cwd else project_dir(payload)
+    for change in _patch_audit_changes(payload):
+        if change["operation"] != "Update":
+            return True
+        path = Path(change["paths"][0].replace("\\", "/")).expanduser()
+        if not path.is_absolute():
+            path = base / path
+        path = path.resolve()
+        if path in seen:
+            return True  # Duplicate sections are not a supported managed-record edit.
+        seen.add(path)
+        try:
+            original = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return True
+        updated = _project_patch(original, change["hunks"])
+        if updated is None or _status_fields(original) != _status_fields(updated):
+            return True
+    return False
 
 
 def _shell_command(tool_input: dict) -> str:
@@ -339,7 +396,7 @@ def pre_tool_use(payload: dict) -> int:
     if tool == "apply_patch":
         if _unsafe_audit_patch(payload):
             return _deny(
-                "Direct apply_patch creation, deletion, moves, or status edits of audit records are blocked. "
+                "Audit patch creation, deletion, moves, status edits, or ambiguous context are blocked. "
                 "Use the audit MCP/CLI runtime for supported lifecycle changes."
             )
         return 0
@@ -348,7 +405,7 @@ def pre_tool_use(payload: dict) -> int:
         command = _shell_command(tin)
         if SHELL_APPLY_PATCH_RE.search(command) and _unsafe_audit_patch(payload):
             return _deny(
-                "Shell-invoked apply_patch cannot create, delete, move, or directly change "
+                "Shell-invoked apply_patch requires exact context and cannot create, delete, move, or change "
                 "lifecycle statuses in audit records. Use the audit MCP/CLI runtime."
             )
         if _shell_direct_audit_write(command, tool, payload):

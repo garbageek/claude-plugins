@@ -71,21 +71,21 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 CATEGORY_PATTERN = "|".join(sorted(map(re.escape, VALID_CATEGORIES), key=len, reverse=True))
 
+def _metadata_header(text: str) -> str:
+    # Canonical record fields precede the first level-two section. Evidence and
+    # fenced examples in the body must never supply missing lifecycle metadata.
+    return re.split(r"(?m)^##(?:\s|$)", text, maxsplit=1)[0]
+
+
 def _field(text: str, label: str) -> str:
-    pattern_strict = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*[ \t]+`([^`\n]*)`"
-    m = re.search(pattern_strict, text)
-    if m:
-        return m.group(1).strip()
-    pattern_fallback = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*[ \t]+([^\n]+)"
-    m = re.search(pattern_fallback, text)
-    if not m:
+    header = _metadata_header(text)
+    pattern = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*[ \t]*([^\n]*)"
+    match = re.search(pattern, header)
+    if not match:
         return ""
-    value = m.group(1).strip()
-    if value == "``":
-        return ""
-    if value.startswith("`") and value.endswith("`"):
-        return value[1:-1].strip()
-    return value
+    value = match.group(1).strip()
+    quoted = re.match(r"`([^`]*)`", value)
+    return quoted.group(1).strip() if quoted else value
 
 def parse_ticket_filename(name: str) -> tuple[Optional[int], str, str]:
     num_match = re.match(r"^(\d+)", name)
@@ -108,44 +108,49 @@ def can_set_status(actor: str, status: str) -> bool:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _consume_global_flags_and_help_alias() -> None:
-    """Remove --root for manual subcommand dispatch and support `audit help`."""
+def _resolve_root() -> Path:
+    """Consume one explicit root without silently falling back after invalid input."""
     args = sys.argv[1:]
     cleaned: list[str] = []
-    skip_next = False
-    for i, arg in enumerate(args):
-        if skip_next:
-            skip_next = False
-            continue
-        if arg == "--root":
-            skip_next = True
-            continue
-        cleaned.append(arg)
+    explicit: Optional[str] = None
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            cleaned.extend(args[index:])
+            break
+        if arg == "--root" or arg.startswith("--root="):
+            if explicit is not None:
+                print("Error: specify --root only once", file=sys.stderr)
+                sys.exit(2)
+            if arg == "--root":
+                index += 1
+                if index >= len(args) or args[index].startswith("--"):
+                    print("Error: --root requires a project directory", file=sys.stderr)
+                    sys.exit(2)
+                explicit = args[index]
+            else:
+                explicit = arg.partition("=")[2]
+            if not explicit:
+                print("Error: --root requires a nonempty project directory", file=sys.stderr)
+                sys.exit(2)
+        else:
+            cleaned.append(arg)
+        index += 1
+
+    selected = explicit if explicit is not None else os.environ.get("AUDIT_ROOT")
+    path = Path(selected).expanduser().resolve() if selected else Path.cwd().resolve()
+    if not path.is_dir():
+        label = "--root" if explicit is not None else "AUDIT_ROOT"
+        print(f"Error: {label} path does not exist or is not a directory: {path}", file=sys.stderr)
+        sys.exit(2)
     if cleaned and cleaned[0] == "help":
         cleaned[0] = "--help"
     sys.argv = [sys.argv[0]] + cleaned
-
-
-def _resolve_root() -> Path:
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg == "--root" and i < len(sys.argv) - 1:
-            p = Path(sys.argv[i + 1]).resolve()
-            if not p.is_dir():
-                print(f"Error: --root path does not exist or is not a directory: {p}", file=sys.stderr)
-                sys.exit(2)
-            return p
-    env = os.environ.get("AUDIT_ROOT")
-    if env:
-        p = Path(env).resolve()
-        if not p.is_dir():
-            print(f"Error: AUDIT_ROOT does not exist or is not a directory: {p}", file=sys.stderr)
-            sys.exit(2)
-        return p
-    return Path.cwd()
+    return path
 
 
 ROOT = _resolve_root()
-_consume_global_flags_and_help_alias()
 
 TICKETS_DIR = ROOT / "audit" / "tickets"
 VERIF_DIR = ROOT / "audit" / "verification" / "details"
@@ -307,8 +312,6 @@ def _triage_readme_text() -> str:
 
 Triage metadata is executable: `audit_next(for_role="resolution")` or CLI `next --for resolution` consumes priority and dependency data.
 
-Use:
-
 Use MCP `audit_triage_set` and `audit_dependency_add`, or the corresponding CLI fallback commands.
 
 Dependency semantics: `003 blocks 001`, so ticket 001 waits until ticket 003 is resolved.
@@ -326,8 +329,6 @@ Canonical dependency syntax:
 ```
 
 Meaning: ticket 001 depends on ticket 003.
-
-The equivalent CLI command is:
 
 Use MCP `audit_dependency_add`, or CLI `deps add 001 --depends-on 003`.
 """
@@ -444,29 +445,27 @@ def _verif_for(num: int, ticket_path: Optional[Path] = None) -> Optional[Path]:
 
 
 def _replace_field(text: str, label: str, value: str) -> str:
-    pattern = rf"^(\*\*{re.escape(label)}:\*\*\s+)(?:`[^`\n]*`|[^\n]*)"
-    new, n = re.subn(
-        pattern,
-        lambda m: f"{m.group(1)}`{value}`",
-        text,
-        count=1,
-        flags=re.MULTILINE,
+    header = _metadata_header(text)
+    pattern = rf"^([ \t]*\*\*{re.escape(label)}:\*\*[ \t]*)(?:`[^`\n]*`|[^\n]*)"
+    updated, count = re.subn(
+        pattern, lambda match: f"{match.group(1).rstrip()} `{value}`", header,
+        count=1, flags=re.MULTILINE,
     )
-    return new if n else text
+    return updated + text[len(header):] if count else text
 
 
 def _ensure_field_after(text: str, after_label: str, label: str, value: str) -> str:
-    if re.search(rf"^\*\*{re.escape(label)}:\*\*", text, flags=re.MULTILINE):
+    header = _metadata_header(text)
+    if re.search(rf"^[ \t]*\*\*{re.escape(label)}:\*\*", header, flags=re.MULTILINE):
         return _replace_field(text, label, value)
-    after_pattern = rf"^(\*\*{re.escape(after_label)}:\*\*\s+(?:`[^`\n]*`|[^\n]*))$"
-    new, n = re.subn(
-        after_pattern,
-        lambda m: f"{m.group(1)}\n**{label}:** `{value}`",
-        text,
-        count=1,
-        flags=re.MULTILINE,
+    after_pattern = rf"^([ \t]*\*\*{re.escape(after_label)}:\*\*[^\n]*)$"
+    updated, count = re.subn(
+        after_pattern, lambda match: f"{match.group(1)}\n**{label}:** `{value}`",
+        header, count=1, flags=re.MULTILINE,
     )
-    return new if n else text.rstrip() + f"\n**{label}:** `{value}`\n"
+    if not count:
+        updated = header.rstrip() + f"\n**{label}:** `{value}`\n\n"
+    return updated + text[len(header):]
 
 
 def _section_content(text: str, section: str) -> str:

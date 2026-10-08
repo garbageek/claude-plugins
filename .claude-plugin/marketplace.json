@@ -8,7 +8,7 @@
     {
       "name": "artur-plugins",
       "source": "./",
-      "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring.",
+      "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
       "category": "development"
     }
   ]

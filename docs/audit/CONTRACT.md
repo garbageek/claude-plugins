@@ -232,6 +232,18 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" ve
 
 Backward compatibility: parsers may read legacy `**Status:**`, `**Date:**`, and `**Commit Verified At:**`, but new writes must use the canonical fields above.
 
+Record metadata occupies the header before the first `##` section. Body evidence,
+fenced examples and status history do not provide missing header values. Read and
+update the first matching header field, preserving examples in the body. Empty
+header fields must not consume the following line.
+
+Covered `Edit`/`MultiEdit` and `apply_patch` operations compare the resulting
+protected header fields. Evidence may quote a status without changing lifecycle
+state. A patch to a managed record must have exact, unambiguous existing context;
+unsupported/fuzzy/context-free patches are refused rather than guessed. Add
+sufficient unchanged context or use the canonical runtime for lifecycle changes.
+
+
 ---
 
 ## 7. Canonical Ticket Metadata

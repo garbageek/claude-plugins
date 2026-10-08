@@ -1,6 +1,6 @@
 # Claude and Codex package contracts
 
-Shared by create, inspect, and update. Use current official documentation for
+Shared by create, inspect, update, and install-agent-plugins. Use current official documentation for
 platform behavior and the live tool schema for backend operations. The defaults
 below are this creator's authoring choices, not additional platform requirements.
 
@@ -20,7 +20,26 @@ claiming backend access or publication. Never invent an endpoint or an app mappi
 
 Creating source is not publishing, registering a marketplace is not installing,
 and a backend release is not a Git push, a Claude account upload, or public-directory
-approval. Perform only the destination-changing operations the user requested.
+approval. Local/repository marketplace compatibility does not imply eligibility for
+the public directory; executable hooks and runtime assumptions may restrict that
+surface. Verify the requested destination's current requirements. Perform only
+the destination-changing operations the user requested.
+
+## Route source work separately from installation
+
+Use [create-plugin](../skills/create-plugin/SKILL.md) for new source,
+[inspect-plugin](../skills/inspect-plugin/SKILL.md) for package/release inspection,
+[update-plugin](../skills/update-plugin/SKILL.md) for source changes or a new release,
+and [install-agent-plugins](../skills/install-agent-plugins/SKILL.md) for installing,
+enabling, upgrading or removing the client copy. The last operation uses the target
+host's plugin manager; it does not require Plugin Creator, change source versions,
+or publish a release. A backend `plugin_id` is not an install coordinate such as
+`plugin@marketplace`.
+
+Read supplied requirements, skills and technical references for their distinct
+roles: preserve required workflows in the actual package, use technical contracts
+for compatibility, and treat ecosystem examples as design evidence rather than
+an instruction to copy or install every referenced project.
 
 ## Minimum package for each target
 
@@ -83,6 +102,36 @@ an ignored compatibility overlay next to a portable root does not change the
 selected format. Preserve a working format during updates; never add a root
 manifest mechanically and claim the same runtime behavior. See the
 [Codex loader](https://github.com/openai/codex/blob/main/codex-rs/core-plugins/src/loader.rs).
+
+## Portable component and runtime contract
+
+When portable format is selected, `skills/<name>/SKILL.md` and root `mcp.json`
+have fixed discovery locations. Do not add `skills`, `commands`, `agents`,
+`mcpServers` or arbitrary host keys at the portable manifest root to redirect
+them. Put client settings under their extension namespace. The native Codex
+manifest's path selectors are a different documented contract, not portable keys.
+
+Portable MCP uses the Agent Plugins MCP schema matching the manifest's schema
+version and an explicit supported transport (`stdio`, `streamable-http`, or
+legacy `sse`). A stdio `command` is one executable token, with arguments in `args`,
+not a shell pipeline. A plugin-relative executable resolves from the plugin root;
+a bare executable uses the host's command search. Portable `${PLUGIN_ROOT}` and
+`${PLUGIN_DATA}` expansion belongs in supported args/environment/cwd fields,
+not in the executable token or remote URL/headers. Native host MCP formats have
+their own expansion rules; do not rename a config file and assume equivalence.
+
+Keep package files read-only at the installed root. Writable plugin caches belong
+in the host's persistent plugin-data directory where provided; project state uses
+the explicitly selected project root. Never infer the user's project from the
+plugin process cwd or bake the author's workstation path into a package.
+Referenced assets/scripts/configs must remain inside the plugin after resolution.
+
+Validate the effective components separately: malformed skill metadata can make
+one skill disappear while other skills load, and an unsupported/broken MCP entry
+can fail without invalidating the rest of the package. A valid manifest or successful
+install therefore does not prove complete skill discovery, working MCP, or hooks.
+Check selected component inventory and actual behavior, not just the install exit
+status. Do not disable unrelated working components to hide a failed optional one.
 
 ## Shared skills and runtime-dependent features
 
@@ -168,6 +217,9 @@ again to compensate for an unavailable readback.
 ## Official sources
 
 - [Portable packaging, registries, MCP, and OpenAI metadata](https://developers.openai.com/plugins/build/plugins)
+- [Agent Plugins specification](https://agent-plugins.org/specification)
+- [Agent Skills specification](https://agentskills.io/specification)
+- [Codex plugin and marketplace commands](https://learn.chatgpt.com/docs/developer-commands)
 - [Claude plugin manifest and component paths](https://code.claude.com/docs/en/plugins-reference)
 - [Claude skills and host-specific extensions](https://code.claude.com/docs/en/skills)
 - [Codex skill metadata](https://learn.chatgpt.com/docs/build-skills)

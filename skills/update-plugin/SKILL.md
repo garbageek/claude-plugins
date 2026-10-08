@@ -1,6 +1,6 @@
 ---
 name: update-plugin
-description: Use when the user requests changes to an existing Claude Code or Codex plugin, including cross-platform conversion, skill or file removal, local/archive edits, or updates to an eligible Plugin Creator release.
+description: Use when changing plugin source or publishing a revised Claude Code/Codex package, including cross-platform conversion, skill/file removal, local/archive edits, or an eligible Plugin Creator release. Not for upgrading or removing an installed client copy.
 ---
 
 # Update plugin
@@ -9,6 +9,11 @@ Treat the existing plugin as the source of truth. Make the requested changes and
 necessary consistency updates, preserving unrelated behavior. Read the shared
 [platform contracts](../../references/plugin-authoring.md) before changing host
 support, manifests, or distribution.
+
+For updating, reinstalling, enabling or removing an **installed** plugin without
+changing its source, use [install-agent-plugins](../install-agent-plugins/SKILL.md).
+Do not bump metadata, publish a release or edit the installed cache to fulfill an
+ordinary client upgrade request.
 
 ## Resolve and read
 
@@ -105,8 +110,12 @@ merely because the previous response was lost.
 
 After a successful backend update, list the new inventory with `get_plugin_files`,
 following pagination. Confirm the returned release/version and verify that every
-requested deleted path is **absent from the complete inventory**. Do not put a
-removed path in `read_paths`: one missing path fails the whole read request.
+requested deleted path is **absent from the complete inventory**. Read surviving
+changed files by paths returned in that inventory. The current reader reports
+missing requests in `missing_paths` alongside the readable results rather than
+failing the whole call. Do not treat a missing content entry as a successful read;
+check the release and refresh the inventory before retrying. Complete inventory,
+not a guessed path read, establishes that the requested deletion was applied.
 
 Read changed and affected retained files by their returned paths. Check exact content,
 manifest identity/version agreement, necessary preserved integrations/assets, and

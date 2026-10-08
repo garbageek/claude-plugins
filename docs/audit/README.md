@@ -107,11 +107,15 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" su
 
 Replace the placeholder paths; a normal shell need not export `CLAUDE_PLUGIN_ROOT`.
 
-From a repository clone, use:
+From the toolkit repository root, pass the selected external project explicitly:
 
 ```bash
-python3 scripts/audit.py <command> [options]
+python3 scripts/audit.py --root "/absolute/target/project" <command> [options]
 ```
+
+For installation, upgrades, source selection or stale installed copies, use
+[install-agent-plugins](../../skills/install-agent-plugins/SKILL.md), not the audit
+state initializer.
 
 ## Normal flows
 
