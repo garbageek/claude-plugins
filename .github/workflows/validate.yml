@@ -7,43 +7,16 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-
       - name: Install validation dependency
         run: python -m pip install PyYAML==6.0.3
-
-      - name: Validate Claude and OpenAI marketplaces
+      - name: Validate the single Claude and Codex plugin
         run: python scripts/validate_plugins.py
-
-      - name: Compile Python files
-        run: |
-          python -m py_compile \
-            plugins/audit-workflow/scripts/audit.py \
-            plugins/audit-workflow/hooks/audit_guard.py \
-            plugins/audit-workflow/hooks/plugin_root.py \
-            plugins/audit-workflow/mcp/audit_mcp_server.py \
-            plugins/audit-workflow/scripts/scatter_scan.py \
-            plugins/codebase-docs/skills/code-to-prd/scripts/codebase_analyzer.py \
-            plugins/codebase-docs/skills/code-to-prd/scripts/prd_scaffolder.py
-          python -m compileall -q plugins/codebase-docs/skills/local-wiki/scripts
-
-      - name: Validate plugin layout
-        run: |
-          test -f .claude-plugin/marketplace.json
-          test -f .agents/plugins/marketplace.json
-          test -f plugins/audit-workflow/.claude-plugin/plugin.json
-          test -d plugins/audit-workflow/skills
-          test -d plugins/audit-workflow/commands
-          test -d plugins/audit-workflow/agents
-          test -f plugins/audit-workflow/hooks/hooks.json
-          test -f plugins/audit-workflow/.mcp.json
-          test -f plugins/audit-workflow/scripts/audit.py
-          test ! -d plugins/audit-workflow/bin
+      - name: Compile maintained Python files
+        run: python -m compileall -q scripts hooks mcp skills

@@ -1,0 +1,19 @@
+{
+  "name": "artur-plugins",
+  "version": "1.0.0",
+  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "repository": "https://github.com/garbageek/claude-plugins",
+  "keywords": [
+    "engineering",
+    "architecture",
+    "audit",
+    "skills",
+    "documentation",
+    "plugins"
+  ],
+  "displayName": "Artur Plugins"
+}
