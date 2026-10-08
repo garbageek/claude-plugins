@@ -70,7 +70,7 @@ Copy this template when verifying individual tickets.
 PASS requires criterion evidence for every acceptance criterion:
 
 ```bash
-python3 /path/to/audit-workflow/scripts/audit.py verify 001 \
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" verify 001 \
   --status PASS \
   --verified-commit def456 \
   --criterion "AC1: pass - pytest tests/test_x.py::test_case" \

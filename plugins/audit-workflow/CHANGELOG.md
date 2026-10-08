@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Added portable Codex metadata, stdio MCP configuration, and explicit Codex hook wiring while retaining one audit runtime.
+- Added per-file apply_patch lifecycle checks, shared installed/project path resolution, and portable advisory Stop output.
+- Required an explicit absolute project root for portable MCP calls; retained the Claude project default and existing tool names.
+- Shared role/review skills now resolve host-independent paths and require a fresh verification handoff. Claude agents and commands remain available.
+
 ## 1.3.0
 
 - Added an independent, scope-bounded review pass and explicit checks against redefining product intent or treating unfamiliar mechanisms as unnecessary.

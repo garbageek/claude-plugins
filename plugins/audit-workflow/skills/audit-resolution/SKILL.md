@@ -6,7 +6,7 @@ tags: [audit, resolution, fix, ticket, evidence]
 
 # Audit Resolution
 
-Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI only as fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" <command> ...`.
+Read the [runtime invocation contract](../../docs/CONTRACT.md#1-canonical-runtime-invocation) first. Prefer the structured `audit_*` MCP tools with an explicit absolute `root`. For CLI fallback, resolve `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there.
 
 Purpose: fix one unblocked audit ticket, record implementation evidence, and hand off to independent verification.
 
@@ -16,9 +16,9 @@ Use the shared [resolution proof guide](../../docs/references/resolution-proof.m
 ## First move from empty context
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution --json
 ```
 
 If no ticket is returned, report that no resolution work is queued. Do not invent tickets.
@@ -26,10 +26,10 @@ If no ticket is returned, report that no resolution work is queued. Do not inven
 ## Default flow
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" show 001
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" show 001
 # inspect current code, implement the smallest correct fix
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve 001   --fix-commit abc123   --evidence "Implemented null-user validation in src/parser.py"   --test "manual reproducer: pass"   --changed src/parser.py   --as audit-resolution   --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" resolve 001   --fix-commit abc123   --evidence "Implemented null-user validation in src/parser.py"   --test "manual reproducer: pass"   --changed src/parser.py   --as audit-resolution   --json
 ```
 
 ## Allowed actions
@@ -37,7 +37,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve 001   --fix-commit abc1
 - read the ticket and related code;
 - modify implementation code for the selected ticket;
 - record changed files, fix commit, command/result evidence, and resolution notes;
-- set `READY_FOR_VERIFICATION` through `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve`.
+- set `READY_FOR_VERIFICATION` through `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" resolve`.
 
 ## Forbidden actions
 

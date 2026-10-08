@@ -49,6 +49,18 @@
       "source": "./plugins/humanizer",
       "description": "Detect and revise formulaic prose in technical documentation, PRs, review comments, and everyday writing while preserving meaning, technical facts, and the author's voice.",
       "category": "productivity"
+    },
+    {
+      "name": "codex-ubuntu-server",
+      "source": "./plugins/codex-ubuntu-server",
+      "description": "Install, authenticate, update, diagnose, and recover Codex CLI on Ubuntu Server, with safe detached maintenance and remote-control guidance.",
+      "category": "development"
+    },
+    {
+      "name": "uncompromising-handover",
+      "source": "./plugins/uncompromising-handover",
+      "description": "Produce a self-contained, high-fidelity context handover for continuing an active coding task across agents, models, and sessions.",
+      "category": "productivity"
     }
   ]
 }

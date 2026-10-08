@@ -11,13 +11,13 @@ Write to `audit/triage/dependencies.md` when cross-ticket ordering matters.
 # 003 blocks 007
 ```
 
-Meaning: `001` and `007` depend on `003`. They must not be selected by `python3 /path/to/audit-workflow/scripts/audit.py next --for resolution` until `003` is resolved. Remove `#` only for real project edges.
+Meaning: `001` and `007` depend on `003`. They must not be selected by `python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" next --for resolution` until `003` is resolved. Remove `#` only for real project edges.
 
 Equivalent CLI form:
 
 ```bash
-python3 /path/to/audit-workflow/scripts/audit.py deps add 001 --depends-on 003
-python3 /path/to/audit-workflow/scripts/audit.py deps add 007 --depends-on 003
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" deps add 001 --depends-on 003
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" deps add 007 --depends-on 003
 ```
 
 ## Graph

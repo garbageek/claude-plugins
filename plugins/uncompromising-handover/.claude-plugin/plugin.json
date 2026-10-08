@@ -1,0 +1,17 @@
+{
+  "name": "uncompromising-handover",
+  "version": "0.1.0",
+  "description": "Produce a self-contained, high-fidelity context handover for continuing an active coding task across agents, models, and sessions.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "displayName": "Uncompromising Handover",
+  "keywords": [
+    "handover",
+    "checkpoint",
+    "context",
+    "continuation",
+    "coding-agents"
+  ]
+}

@@ -6,17 +6,17 @@ tags: [audit, triage, priority, dependency, roadmap]
 
 # Audit Triage
 
-Prefer the structured `audit_*` MCP tools when available. Use the bundled CLI only as fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" <command> ...`.
+Read the [runtime invocation contract](../../docs/CONTRACT.md#1-canonical-runtime-invocation) first. Prefer the structured `audit_*` MCP tools with an explicit absolute `root`. For CLI fallback, resolve `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there.
 
-Purpose: turn an audit queue into executable ordering. A prose plan is optional; `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution` must consume the metadata.
+Purpose: turn an audit queue into executable ordering. A prose plan is optional; `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` must consume the metadata.
 
 ## First move from empty context
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" export --json
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" summary
 ```
 
 If no tickets exist, report an empty queue. Do not create findings during triage.
@@ -24,8 +24,8 @@ If no tickets exist, report an empty queue. Do not create findings during triage
 ## Update executable metadata
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" deps add 001 --depends-on 003
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" deps add 001 --depends-on 003
 ```
 
 Dependency semantics:
@@ -34,7 +34,7 @@ Dependency semantics:
 003 blocks 001
 ```
 
-Ticket `001` is skipped by `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution` until `003` is resolved.
+Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` until `003` is resolved.
 
 ## Scoring
 
@@ -63,4 +63,4 @@ Ticket `001` is skipped by `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" nex
 
 ## Stop condition
 
-Stop when `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" next --for resolution --json` returns the expected highest-priority unblocked ticket.
+Stop when `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution --json` returns the expected highest-priority unblocked ticket.

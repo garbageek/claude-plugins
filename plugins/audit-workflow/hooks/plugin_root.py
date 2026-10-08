@@ -6,19 +6,25 @@ from pathlib import Path
 
 
 def plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("AUDIT_PLUGIN_ROOT")
-    if env:
-        return Path(env).expanduser().resolve()
+    for key in ("AUDIT_PLUGIN_ROOT", "PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"):
+        value = os.environ.get(key)
+        if value:
+            return Path(value).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
 
 
 def project_dir(payload: dict | None = None) -> Path:
     payload = payload or {}
-    env = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("AUDIT_PROJECT_DIR")
-    if env:
-        return Path(env).expanduser().resolve()
-    for key in ("cwd", "project_dir", "projectDir"):
-        value = payload.get(key)
-        if isinstance(value, str) and value:
+    for key in ("AUDIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+        value = os.environ.get(key)
+        if value:
             return Path(value).expanduser().resolve()
-    return Path.cwd().resolve()
+    value = next((payload[k] for k in ("cwd", "project_dir", "projectDir")
+                  if isinstance(payload.get(k), str) and payload[k]), None)
+    current = Path(value).expanduser().resolve() if value else Path.cwd().resolve()
+    # A session opened below the project root still observes its existing audit.
+    # Do not cross a nested repository/worktree boundary to find someone else's state.
+    for candidate in (current, *current.parents):
+        if (candidate / "audit").is_dir() or (candidate / ".git").exists():
+            return candidate
+    return current

@@ -60,6 +60,6 @@ Before returning, confirm that the requested boundary remained intact, changed/r
 
 ## Explicit ticketization handoff
 
-Only when the user requests recording findings, load [the public contract](../../docs/CONTRACT.md) and [audit-discovery](../audit-discovery/SKILL.md). Use the existing `audit_*` MCP tools or the installed plugin's `scripts/audit.py` through Python, from the intended project directory. Initialize state only inside this authorized handoff.
+Only when the user requests recording findings, load [the public contract](../../docs/CONTRACT.md) and [audit-discovery](../audit-discovery/SKILL.md). Use the existing `audit_*` MCP tools or the installed plugin's `scripts/audit.py` through Python, with an explicit project `root` (CLI `--root`), following the invocation contract. Initialize state only inside this authorized handoff.
 
 Retain existing category names, `audit-discovery` permissions, ticket/export shapes, evidence requirements, and acceptance gates. An incomplete finding remains DRAFT; do not manufacture evidence to open it. Do not create an alternative CLI, hand-edit lifecycle state, triage or resolve automatically, or claim PASS from a review. Subsequent triage, resolution, and independent verification remain the existing roles.

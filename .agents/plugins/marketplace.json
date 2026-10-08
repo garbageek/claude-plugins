@@ -5,6 +5,18 @@
   },
   "plugins": [
     {
+      "name": "audit-workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/audit-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
       "name": "system-architect",
       "source": {
         "source": "local",
@@ -69,6 +81,30 @@
       "source": {
         "source": "local",
         "path": "./plugins/humanizer"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "codex-ubuntu-server",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-ubuntu-server"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "uncompromising-handover",
+      "source": {
+        "source": "local",
+        "path": "./plugins/uncompromising-handover"
       },
       "policy": {
         "installation": "AVAILABLE",

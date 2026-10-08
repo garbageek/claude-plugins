@@ -1,0 +1,14 @@
+interface:
+  display_name: Codex Ubuntu Server
+  short_description: Install and maintain Codex on Ubuntu servers
+  default_prompt: Use $codex-ubuntu-server to set up or maintain Codex on my Ubuntu
+    server.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

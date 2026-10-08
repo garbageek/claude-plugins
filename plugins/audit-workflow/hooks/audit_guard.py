@@ -2,25 +2,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-try:
-    from plugin_root import plugin_root, project_dir
-except Exception:  # pragma: no cover - defensive fallback for hook launch oddities
-    def plugin_root() -> Path:
-        env = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("AUDIT_PLUGIN_ROOT")
-        return Path(env).resolve() if env else Path(__file__).resolve().parents[1]
-
-    def project_dir(payload: dict | None = None) -> Path:
-        payload = payload or {}
-        env = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("AUDIT_PROJECT_DIR")
-        if env:
-            return Path(env).resolve()
-        return Path(payload.get("cwd") or os.getcwd()).resolve()
+sys.dont_write_bytecode = True
+from plugin_root import plugin_root, project_dir
 
 LIFECYCLE_STATUSES = "PASS|PARTIAL|FAIL|READY_FOR_VERIFICATION|REGRESS|BLOCKED|WONTFIX|INVALID"
 AUDIT_MARKDOWN_PATH = r"(?:\.[\\/])?audit[\\/](?:tickets|verification|triage)[\\/][^\s'\";&|<>]+\.md"
@@ -86,7 +74,10 @@ def _deny(reason: str) -> int:
 def _context(event: str, text: str) -> int:
     if not text.strip():
         return 0
-    _json_out({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text.strip()}})
+    if event == "Stop":
+        _json_out({"systemMessage": text.strip()})
+    else:
+        _json_out({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text.strip()}})
     return 0
 
 
@@ -213,12 +204,73 @@ def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 124, "", f"audit {' '.join(args)} timed out after 12 seconds")
 
 
+# Codex sends apply_patch source text in tool_input.command, not Edit/Write fields.
+PATCH_FILE_RE = re.compile(r"^\*\*\* (Add|Update|Delete) File: (.+)$")
+PATCH_MOVE_RE = re.compile(r"^\*\*\* Move to: (.+)$")
+STATUS_FIELD_RE = re.compile(r"^\s*(?:\*\*)?(?:Verification\s+)?Status(?:\*\*)?\s*:", re.IGNORECASE)
+
+
+def _patch_changes(command: str) -> list[dict]:
+    changes: list[dict] = []
+    current = None
+    for line in command.splitlines():
+        match = PATCH_FILE_RE.match(line)
+        if match:
+            current = {"operation": match[1], "paths": [match[2]], "lines": []}
+            changes.append(current)
+        elif line == "*** End Patch":
+            current = None
+        elif current is not None:
+            move = PATCH_MOVE_RE.match(line)
+            if move:
+                current["operation"] = "Move"
+                current["paths"].append(move[1])
+            elif line.startswith(("+", "-")):
+                current["lines"].append(line[1:])
+    return changes
+
+
+def _is_audit_record(path: str, payload: dict) -> bool:
+    candidate = Path(path.replace("\\", "/"))
+    cwd = payload.get("cwd")
+    base = Path(cwd).expanduser() if isinstance(cwd, str) and cwd else project_dir(payload)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    parts = candidate.resolve().parts
+    return (candidate.suffix.lower() == ".md" and any(
+        parts[i] == "audit" and parts[i + 1] in {"tickets", "verification", "triage"}
+        for i in range(len(parts) - 2)
+    ))
+
+
+def _patch_audit_changes(payload: dict) -> list[dict]:
+    command = _tool_input(payload).get("command")
+    if not isinstance(command, str):
+        return []
+    return [change for change in _patch_changes(command)
+            if any(_is_audit_record(path, payload) for path in change["paths"])]
+
+
+def _shell_command(tool_input: dict) -> str:
+    # Codex hooks normally canonicalize exec_command to Bash/command.
+    return str(tool_input.get("command") or tool_input.get("cmd") or "")
+
+
 def pre_tool_use(payload: dict) -> int:
     tool = _tool_name(payload)
     tin = _tool_input(payload)
 
-    if tool in {"Bash", "PowerShell"}:
-        command = str(tin.get("command") or "")
+    if tool == "apply_patch":
+        for change in _patch_audit_changes(payload):
+            if change["operation"] != "Update" or any(STATUS_FIELD_RE.search(line) for line in change["lines"]):
+                return _deny(
+                    "Direct apply_patch creation, deletion, moves, or status edits of audit records are blocked. "
+                    "Use the audit MCP/CLI runtime for supported lifecycle changes."
+                )
+        return 0
+
+    if tool in {"Bash", "PowerShell", "exec_command", "shell_command"}:
+        command = _shell_command(tin)
         if _shell_direct_audit_write(command, tool):
             return _deny(
                 "Audit markdown lifecycle state must be changed through the audit MCP/CLI runtime, not shell rewrites. "
@@ -236,7 +288,11 @@ def pre_tool_use(payload: dict) -> int:
 
 def post_tool_use(payload: dict) -> int:
     tin = _tool_input(payload)
-    if not _touches_audit_file(tin):
+    if _tool_name(payload) == "apply_patch":
+        touched = bool(_patch_audit_changes(payload))
+    else:
+        touched = _touches_audit_file(tin)
+    if not touched:
         return 0
     project = project_dir(payload)
     if not (project / "audit").exists():

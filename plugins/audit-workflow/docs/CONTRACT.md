@@ -6,27 +6,77 @@ This document defines the canonical behavioral contract shared by the audit-tick
 
 ## 1. Canonical Runtime Invocation
 
-The structured MCP tools are the preferred machine interface. If the project has no `audit/` directory, initialize it with `audit_init`.
+The structured `audit_*` MCP tools are the preferred machine interface in Claude
+Code and local Codex. Pass the absolute target project directory as `root` on
+every call. Initialize with `audit_init` only when ticket-lifecycle work is
+requested; `deep-review` and `feature-scattering` remain read-only by default.
 
-The canonical implementation is one Python runtime:
+The canonical implementation is `scripts/audit.py` inside the installed plugin.
+Do not assume an `audit` executable is on `PATH`, install a project-local copy,
+or implement lifecycle transitions by editing Markdown.
 
-```text
-plugins/audit-workflow/scripts/audit.py
-```
+### Resolve the installed plugin and the target project separately
 
-CLI fallback from a plugin-loaded skill/agent/command:
+Before a CLI fallback, determine the actual installed path from this loaded skill
+or contract: the plugin directory contains `scripts/audit.py` and
+`.claude-plugin/plugin.json`. Set `AUDIT_PLUGIN_ROOT` to that absolute directory
+and `AUDIT_PROJECT_DIR` to the absolute project being audited. Reuse host-provided
+paths only when they identify these same directories. Do not assume variables
+set for hook/MCP processes also exist in an ordinary agent shell, and do not use
+the plugin cache or the shell's incidental working directory as the project.
+
+For a skill under `skills/<name>/SKILL.md`, the plugin root is two directories
+above the skill directory. For a clone, it is `plugins/audit-workflow/`.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" --root /path/to/project <command>
+export AUDIT_PLUGIN_ROOT="/absolute/installed/audit-workflow"
+export AUDIT_PROJECT_DIR="/absolute/target/project"
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" <command>
 ```
 
-CLI fallback from a repository clone:
+Replace the example paths with observed paths. Include the assignments in the
+same shell invocation when the host does not preserve environment variables
+between calls. This is invocation setup, not a second runtime or an installed
+wrapper.
 
-```bash
-python3 plugins/audit-workflow/scripts/audit.py --root /path/to/project <command>
-```
+### Host integration
 
-Do not assume an `audit` executable is on `PATH`; hosted Claude distribution forbids the former top-level `bin/` layout. The runtime is not maintained as a second self-contained fallback copy: lifecycle constants, parsing, and commands have one canonical implementation in `scripts/audit.py`.
+- Claude uses `.mcp.json`, `hooks/hooks.json`, the shared skills, and its existing
+  `agents/` and `commands/` entry points. Its configured project directory remains
+  a supported MCP default; an explicit `root` takes precedence.
+- Codex uses root `plugin.json` and `mcp.json`. The OpenAI extension explicitly
+  selects `hooks/codex.json` instead of the default Claude hook file. Both launch
+  the same Python MCP server and guard. The portable launch requires a nonempty,
+  absolute, existing `root` for every MCP tool call; missing/invalid roots return
+  a tool error without creating state. A portable MCP process starts in the
+  installed plugin directory, so its `cwd` is not a project default.
+- Codex loads the same six role/review skills. It does not need generated copies
+  of Claude commands: `audit_init`, `audit_summary`, `audit_doctor`, and
+  `audit_next` provide their operations through MCP. `agents/*.md` remain Claude
+  agent definitions, not automatically installed Codex custom agents.
+- For an independent verifier in Codex, delegate a fresh native subagent with
+  the absolute verification skill path, project root, ticket IDs, fix revision,
+  original acceptance criteria, and available evidence. The verifier must read
+  the skill and inspect the source independently, not inherit the resolver's
+  verdict as fact. When native delegation is unavailable, hand off to another
+  session/reviewer; the resolver must not simply relabel itself as verification.
+- Trust Codex plugin hooks through `/hooks` after inspecting their definitions.
+  Installation alone does not enable untrusted hooks. `PreToolUse` handles the
+  actual `apply_patch` payload; `PostToolUse` diagnoses touched audit records;
+  `SessionStart` reports existing state; `Stop` emits an advisory health warning
+  without automatically continuing or modifying the project.
+
+Role arguments enforce the transition matrix in the runtime; they are not
+agent-identity authentication. Tool hooks are additional guardrails for covered
+tool calls, not a filesystem sandbox. Do not claim that a skill enforces a
+Claude model/tool allowlist in Codex or that hooks intercept every possible
+external write.
+
+Platform references: [OpenAI packaging](https://developers.openai.com/plugins/build/plugins),
+[Codex hooks](https://learn.chatgpt.com/docs/hooks),
+[Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents),
+[portable MCP launch rules](https://agent-plugins.org/specification#stdio),
+and [Claude hooks](https://code.claude.com/docs/en/hooks).
 
 ---
 
@@ -119,7 +169,7 @@ Resolution requires:
 Use:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve 042 \
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" resolve 042 \
   --fix-commit abc123 \
   --evidence "Regression test added: tests/test_parser.py::test_null_input" \
   --test "pytest tests/test_parser.py: pass" \
@@ -140,7 +190,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" resolve 042 \
 Use:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" verify 042 \
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" verify 042 \
   --status PASS \
   --verified-commit def456 \
   --criterion "AC1: pass - pytest tests/test_parser.py::test_null_input" \
@@ -285,7 +335,7 @@ MCP `audit_create` has an explicit cold-start side effect: it initializes the au
 The canonical source of truth is the normalized record produced by:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" export --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json
 ```
 
 Reports and baselines should derive from this model rather than re-parsing different subsets independently. Baselines include status, semantic metadata, and content hashes.

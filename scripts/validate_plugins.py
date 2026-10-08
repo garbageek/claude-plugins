@@ -148,9 +148,45 @@ def validate_openai_marketplace(claude_plugins):
         print(f'OpenAI/Codex: {name} {canonical.get("version", "")}: marketplace entry valid')
 
 
+def validate_audit_adapters():
+    plugin = PLUGINS_ROOT / "audit-workflow"
+    portable = read_json(plugin / "plugin.json")
+    hook_path = portable["extensions"]["com.openai"].get("hooks")
+    require(hook_path == "./hooks/codex.json", "audit-workflow: Codex must select its hook adapter")
+    codex_hooks = read_json(plugin / hook_path)["hooks"]
+    claude_hooks = read_json(plugin / "hooks/hooks.json")["hooks"]
+    modes = {"SessionStart": "session-start", "PreToolUse": "pre-tool-use", "PostToolUse": "post-tool-use", "Stop": "stop"}
+    require(set(codex_hooks) == set(claude_hooks) == set(modes), "audit-workflow: hook event coverage differs")
+    for event, mode in modes.items():
+        for group in codex_hooks[event]:
+            if event in {"PreToolUse", "PostToolUse"}:
+                matcher = re.compile(group.get("matcher", ""))
+                require(all(matcher.search(name) for name in ("Bash", "apply_patch")), f"{event}: missing Codex tool path")
+            for handler in group["hooks"]:
+                require(handler.get("type") == "command" and "args" not in handler, f"{event}: expected Codex command string")
+                expected = f'python3 "${{PLUGIN_ROOT}}/hooks/audit_guard.py" {mode}'
+                require(handler.get("command") == expected, f"{event}: must launch the shared guard with a quoted path")
+                if event in {"PostToolUse", "Stop"}:
+                    require(handler.get("timeout", 0) > 12, f"{event}: timeout must exceed doctor subprocess timeout")
+    portable_mcp = read_json(plugin / "mcp.json")
+    require(portable_mcp.get("$schema") == "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", "audit-workflow: missing portable MCP schema")
+    server = portable_mcp["mcpServers"]["audit-workflow"]
+    claude_server = read_json(plugin / ".mcp.json")["mcpServers"]["audit-workflow"]
+    require(server.get("type") == "stdio", "audit-workflow: expected stdio MCP")
+    require(server.get("command") == claude_server.get("command") == "python3", "audit-workflow: MCP launchers differ")
+    require(server.get("args") == ["${PLUGIN_ROOT}/mcp/audit_mcp_server.py"], "audit-workflow: portable launcher must use the shared MCP server")
+    require(claude_server.get("args") == ["${CLAUDE_PLUGIN_ROOT}/mcp/audit_mcp_server.py"], "audit-workflow: Claude launcher must use the shared MCP server")
+    require(server.get("env", {}).get("AUDIT_REQUIRE_EXPLICIT_ROOT") == "1", "audit-workflow: portable MCP must not default to the plugin cache")
+    require("AUDIT_PROJECT_DIR" not in server.get("env", {}), "audit-workflow: project root must come from the tool call")
+    for path in ("scripts/audit.py", "hooks/plugin_root.py", "hooks/audit_guard.py", "mcp/audit_mcp_server.py"):
+        require((plugin / path).is_file(), f"audit-workflow: missing shared component {path}")
+    print("Audit Workflow: Claude/Codex adapter wiring valid (host execution not checked)")
+
+
 def main():
     claude_plugins = validate_claude_marketplace()
     validate_openai_marketplace(claude_plugins)
+    validate_audit_adapters()
 
 
 if __name__ == "__main__":
