@@ -4,12 +4,12 @@
       "type": "stdio",
       "command": "python3",
       "args": [
-        "${PLUGIN_ROOT}/mcp/audit_mcp_server.py"
+        "mcp/audit_mcp_server.py"
       ],
       "env": {
-        "AUDIT_PLUGIN_ROOT": "${PLUGIN_ROOT}",
         "AUDIT_REQUIRE_EXPLICIT_ROOT": "1"
-      }
+      },
+      "cwd": "."
     }
   }
 }

@@ -160,15 +160,26 @@ def validate_audit_adapters():
                                 f"{host}: incorrect shared guard command")
                     if event in {"PostToolUse", "Stop"}:
                         require(handler.get("timeout", 0) > 12, f"{host}: hook timeout below doctor timeout")
-    for relative, variable in ((".mcp.json", "CLAUDE_PLUGIN_ROOT"), ("mcp/codex.json", "PLUGIN_ROOT")):
+    for relative in (".mcp.json", "mcp/codex.json"):
         servers = read_json(ROOT / relative)["mcpServers"]
         require(set(servers) == {"audit-workflow"}, f"{relative}: unexpected/missing audit server")
         server = servers["audit-workflow"]
         require(server.get("command") == "python3", f"{relative}: expected Python launcher")
-        require(server.get("args") == [f"${{{variable}}}/mcp/audit_mcp_server.py"], f"{relative}: incorrect shared MCP path")
+        if relative == ".mcp.json":
+            require(server.get("args") == ["${CLAUDE_PLUGIN_ROOT}/mcp/audit_mcp_server.py"],
+                    "Claude: incorrect shared MCP path")
+        else:
+            # Native Codex resolves relative cwd from the installed plugin root,
+            # but does not interpolate PLUGIN_ROOT in MCP args or env.
+            require(server.get("cwd") == ".", "Codex: cwd must resolve to the installed plugin root")
+            require(server.get("args") == ["mcp/audit_mcp_server.py"],
+                    "Codex: MCP path must be relative to plugin cwd")
         env = server.get("env", {})
         require(env.get("AUDIT_REQUIRE_EXPLICIT_ROOT") == "1" and "AUDIT_PROJECT_DIR" not in env,
                 f"{relative}: require explicit project roots, not plugin cwd")
+        if relative == "mcp/codex.json":
+            require("AUDIT_PLUGIN_ROOT" not in env,
+                    "Codex: do not use unexpanded PLUGIN_ROOT in native MCP env")
     for relative in ("scripts/audit.py", "scripts/scatter_scan.py", "hooks/audit_guard.py", "hooks/plugin_root.py", "mcp/audit_mcp_server.py"):
         local_path(relative)
     print("Audit adapters: shared runtime and guard, explicit project roots (host execution not checked)")
