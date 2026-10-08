@@ -10,23 +10,42 @@ from pathlib import Path
 from typing import Any
 
 SERVER_NAME = "audit-workflow"
-SERVER_VERSION = "1.1.1"
 # structuredContent in tool results is defined from 2025-06-18; older clients ignore it.
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2025-03-26"}
 
 
-def plugin_root() -> Path:
-    env = os.environ.get("AUDIT_PLUGIN_ROOT") or os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env:
-        return Path(env).expanduser().resolve()
-    return Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+
+# Share installed-path resolution with the hook adapter; no second audit engine.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
+from plugin_root import plugin_root, project_dir
+
+
+def requires_explicit_root() -> bool:
+    return os.environ.get("AUDIT_REQUIRE_EXPLICIT_ROOT") == "1"
+
+
+def server_version() -> str:
+    # Package manifests own the release version; do not maintain another literal.
+    return json.loads((plugin_root() / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
 
 
 def default_root(args: dict[str, Any] | None = None) -> Path:
     args = args or {}
-    value = args.get("root") or os.environ.get("AUDIT_PROJECT_DIR") or os.environ.get("CLAUDE_PROJECT_DIR")
-    return Path(value).expanduser().resolve() if value else Path.cwd().resolve()
+    value = args.get("root")
+    if requires_explicit_root():
+        if not isinstance(value, str) or not value.strip() or not Path(value).expanduser().is_absolute():
+            raise ValueError("root must be the absolute path to the intended project, not the installed plugin directory")
+    elif value is not None and (not isinstance(value, str) or not value.strip()):
+        raise ValueError("root must be a nonempty project path")
+    root = Path(value).expanduser().resolve() if value else project_dir()
+    if not root.is_dir():
+        raise ValueError(f"Project root is not an existing directory: {root}")
+    installed = plugin_root().resolve()
+    if root == installed or installed in root.parents:
+        raise ValueError(f"Project root cannot be inside the installed audit-workflow plugin: {root}")
+    return root
 
 
 def audit_script() -> Path:
@@ -186,11 +205,11 @@ def repeated_arg(out: list[str], flag: str, values: Any) -> None:
 def tools() -> list[dict[str, Any]]:
     str_schema = {"type": "string"}
     id_schema = {"type": "string", "pattern": r"^\d+$"}
-    root_prop = {"root": {"type": "string", "description": "Project root. Defaults to CLAUDE_PROJECT_DIR or current directory."}}
+    root_prop = {"root": {"type": "string", "minLength": 1, "description": "Absolute project directory. Required by the Codex/portable launcher; Claude can use its configured project directory."}}
     category_schema = {"type": "string", "enum": ["BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY"]}
     severity_schema = {"type": "string", "enum": ["critical", "high", "medium", "low"]}
     verification_status_schema = {"type": "string", "enum": ["PASS", "PARTIAL", "FAIL", "REGRESS", "BLOCKED", "WONTFIX", "INVALID"]}
-    return [
+    definitions = [
         {
             "name": "audit_init",
             "description": "Initialize the audit workflow in a project.",
@@ -257,6 +276,10 @@ def tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": root_prop, "additionalProperties": False},
         },
     ]
+    if requires_explicit_root():
+        for tool in definitions:
+            tool["inputSchema"].setdefault("required", []).append("root")
+    return definitions
 
 
 def _ids(args: dict[str, Any]) -> list[str]:
@@ -264,6 +287,10 @@ def _ids(args: dict[str, Any]) -> list[str]:
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        default_root(args)
+    except ValueError as exc:
+        return tool_result({"ok": False, "error": str(exc)}, is_error=True)
     if name == "audit_init":
         return audit_tool_result(run_audit(args, "init"))
     if name == "audit_doctor":
@@ -364,7 +391,7 @@ def handle(msg: dict[str, Any]) -> None:
             respond(msg_id, {
                 "protocolVersion": selected_version,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+                "serverInfo": {"name": SERVER_NAME, "version": server_version()},
             })
         elif method == "tools/list":
             respond(msg_id, {"tools": tools()})

@@ -9,10 +9,10 @@ Find concrete change-locality problems, not every feature mentioned in several f
 
 ## Inputs and invocation
 
-Establish the repository root, source scope, feature terms (or explicit auto-discovery), and relevant history limit. Read the actual intended boundaries and representative callers before judging a boundary violation. Resolve the helper from the installed plugin, not from a private skills checkout. Python 3.10+ and optional Git are required.
+Establish the repository root, source scope, feature terms (or explicit auto-discovery), and relevant history limit. Read the actual intended boundaries and representative callers before judging a boundary violation. Resolve `AUDIT_PLUGIN_ROOT` from the installed skill using the [invocation contract](../../docs/CONTRACT.md#1-canonical-runtime-invocation), not from a private checkout or an assumed host environment variable. Python 3.10+ and optional Git are required.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scatter_scan.py" /path/to/repo --scope src --terms checkout FEATURE_PROMO --git-commits 200 --json
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/scatter_scan.py" /path/to/repo --scope src --terms checkout FEATURE_PROMO --git-commits 200 --json
 ```
 
 Replace the example root/scope/terms with observed inputs. `--scope` accepts repeated repository-relative files/directories; omission means the repository. Omit `--terms` for flag-shaped auto-discovery; `--no-git` disables history. `--json` selects machine output; default is Markdown. Thresholds, directory exclusions, and history limits are available in `--help`. The helper writes only stdout/stderr; do not redirect it into repository artifacts unless requested.

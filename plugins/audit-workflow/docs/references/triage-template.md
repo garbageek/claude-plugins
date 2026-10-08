@@ -6,7 +6,7 @@ Write to `audit/triage/triage-{date}.md`.
 # Audit Triage
 
 **Date:** {YYYY-MM-DD}
-**Source of Truth:** `python3 /path/to/audit-workflow/scripts/audit.py export --json`
+**Source of Truth:** `python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" export --json`
 **Total Tickets:** {N}
 
 ---
@@ -31,7 +31,7 @@ Impact must be >= severity minimum unless the downgrade is explicitly justified.
 For every row, apply executable metadata:
 
 ```bash
-python3 /path/to/audit-workflow/scripts/audit.py triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
 ```
 
 ---
@@ -74,8 +74,8 @@ Restore lost/degraded functionality.
 Equivalent CLI updates:
 
 ```bash
-python3 /path/to/audit-workflow/scripts/audit.py deps add 001 --depends-on 003
-python3 /path/to/audit-workflow/scripts/audit.py deps add 007 --depends-on 003
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" deps add 001 --depends-on 003
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" deps add 007 --depends-on 003
 ```
 
 ---
@@ -113,7 +113,7 @@ python3 /path/to/audit-workflow/scripts/audit.py deps add 007 --depends-on 003
 ## Execution Check
 
 ```bash
-python3 /path/to/audit-workflow/scripts/audit.py next --for resolution
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" next --for resolution
 ```
 
 Expected next ticket: `{ticket-id}` because `{rationale}`.

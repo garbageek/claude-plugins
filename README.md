@@ -1,6 +1,6 @@
 # claude-plugins
 
-Plugin marketplace for evidence-led audit, architecture, prompt design, prose editing, human procedures, source-backed documentation, and repository/Copilot review instructions.
+Plugin marketplace for evidence-led audit, architecture, prompts, prose editing, human procedures, source-backed documentation, repository/Copilot review instructions, Codex server operations, and coding-session handovers.
 
 This README covers repository-specific installation, plugin usage, runtime notes, and validation.
 
@@ -8,38 +8,20 @@ This README covers repository-specific installation, plugin usage, runtime notes
 
 | Plugin | Claude marketplace | OpenAI/Codex marketplace | Entry skills | Runtime requirements |
 |---|---|---|---|---|
-| `audit-workflow` | yes | no | `deep-review`, `feature-scattering`, existing audit lifecycle skills | `python3`; `feature-scattering` helper requires Python 3.10+ |
+| `audit-workflow` | yes | yes | `deep-review`, `feature-scattering`, existing audit lifecycle skills | `python3`; `feature-scattering` helper requires Python 3.10+ |
 | `system-architect` | yes | yes | `architect`, `recover` | none beyond the host app |
 | `prompt-design` | yes | yes | `design-prompts` | none beyond the host app |
 | `human-runbooks` | yes | yes | `human-execution-runbook` | none beyond the host app |
 | `codebase-docs` | yes | yes | `code-to-prd`, `local-wiki` | Python 3.10+ for helpers; optional HTML wiki rendering also uses skill-local Jinja2/markdown-it-py dependencies |
 | `repo-instructions` | yes | yes | `init`, `review`, `copilot-review-customizer` | No bundled runtime; Copilot customization needs current GitHub docs and repository/history access or supplied source evidence |
 | `humanizer` | yes | yes | `humanizer` | none beyond the host app |
+| `codex-ubuntu-server` | yes | yes | `codex-ubuntu-server` | Target Ubuntu host, shell/SSH access, and Codex CLI for maintenance; no bundled local runtime |
+| `uncompromising-handover` | yes | yes | `uncompromising-handover` | none beyond the host app; checkpoint delivery requires a writable/accessibly shared location |
 
-The two repository catalogs intentionally differ:
-
-```text
-Claude marketplace:  .claude-plugin/marketplace.json
-    -> audit-workflow
-    -> system-architect
-    -> prompt-design
-    -> human-runbooks
-    -> codebase-docs
-    -> repo-instructions
-    -> humanizer
-
-OpenAI marketplace:  .agents/plugins/marketplace.json
-    -> system-architect
-    -> prompt-design
-    -> human-runbooks
-    -> codebase-docs
-    -> repo-instructions
-    -> humanizer
-```
-
-`audit-workflow` is intentionally not published for Codex. Adding portable skills to it did not make its hooks, MCP runtime, or lifecycle integration Codex-compatible.
-
-The six portable packages are published through the OpenAI/Codex repository marketplace as shown above. Repository validation and local helper execution are not equivalent to installed-host execution on every Claude/Codex surface.
+Both marketplaces expose the same nine plugins. `audit-workflow` includes a
+local Python/MCP runtime and host-specific hook configurations; Codex hooks must
+be reviewed and trusted before they run. Repository validation is not proof of
+installed-host behavior.
 
 ---
 
@@ -71,6 +53,8 @@ Install only the plugins you need:
 /plugin install codebase-docs@artur-plugins
 /plugin install repo-instructions@artur-plugins
 /plugin install humanizer@artur-plugins
+/plugin install codex-ubuntu-server@artur-plugins
+/plugin install uncompromising-handover@artur-plugins
 ```
 
 Shell equivalents:
@@ -83,6 +67,8 @@ claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
 claude plugin install humanizer@artur-plugins
+claude plugin install codex-ubuntu-server@artur-plugins
+claude plugin install uncompromising-handover@artur-plugins
 ```
 
 Each interactive `/plugin install ...` opens plugin details first so you can review the package and choose the installation scope.
@@ -141,6 +127,8 @@ claude plugin details human-runbooks
 claude plugin details codebase-docs
 claude plugin details repo-instructions
 claude plugin details humanizer
+claude plugin details codex-ubuntu-server
+claude plugin details uncompromising-handover
 ```
 
 ### Skill entry points
@@ -154,6 +142,8 @@ claude plugin details humanizer
 | `codebase-docs` | `/codebase-docs:code-to-prd`, `/codebase-docs:local-wiki` |
 | `repo-instructions` | `/repo-instructions:init`, `/repo-instructions:review`, `/repo-instructions:copilot-review-customizer` |
 | `humanizer` | `/humanizer:humanizer` |
+| `codex-ubuntu-server` | `/codex-ubuntu-server:codex-ubuntu-server` |
+| `uncompromising-handover` | `/uncompromising-handover:uncompromising-handover` |
 
 ### `audit-workflow`
 Read-only investigation can now start without creating audit state:
@@ -253,6 +243,14 @@ Installing `repo-instructions` supplies the **customizer**, not a review skill a
 ```
 
 [humanizer](plugins/humanizer/skills/humanizer/SKILL.md) detects, rewrites, or edits formulaic prose when writing quality is requested. It handles technical documentation, PR descriptions, review comments, messages, and other prose while preserving meaning, certainty, code, identifiers, numbers, citations, and the sender's authority and commitments. Detect mode does not rewrite; already-clear text may remain unchanged. This is prose editing, not prompt design, an authorship detector, or an automatic filter on unrelated answers.
+
+### `codex-ubuntu-server`
+
+Use `/codex-ubuntu-server:codex-ubuntu-server` to administer Codex CLI on a selected Ubuntu host. The skill requires access to that host and does not authorize installation, updates, remote control, or service changes without the relevant request. It contains setup and maintenance references.
+
+### `uncompromising-handover`
+
+Use `/uncompromising-handover:uncompromising-handover` to create a self-contained continuation checkpoint for an active coding task. The bundled template is the source of the output format; checkpoint files are versioned and must not be committed automatically.
 
 ## 1.4 Enable or disable
 
@@ -403,17 +401,7 @@ or:
 https://github.com/garbageek/claude-plugins
 ```
 
-The `artur-plugins` Claude marketplace then exposes all seven plugins:
-
-```text
-audit-workflow
-system-architect
-prompt-design
-human-runbooks
-codebase-docs
-repo-instructions
-humanizer
-```
+The `artur-plugins` Claude marketplace exposes the packages listed in the [plugin catalog](#plugin-catalog).
 
 The repository does not contain prebuilt per-plugin `.plugin` release archives, so the repository-marketplace path is the canonical installation path documented here.
 
@@ -431,7 +419,7 @@ The reverse does not happen automatically: a plugin installed only with `/plugin
 
 ### Skill-focused portable plugins
 
-`system-architect`, `prompt-design`, `human-runbooks`, `repo-instructions`, and `humanizer` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
+`system-architect`, `prompt-design`, `human-runbooks`, `repo-instructions`, `humanizer`, and `uncompromising-handover` are primarily skill/reference packages with no local runtime dependency. Their package shape is intended for Claude Code, Chat, and Cowork skill loading. Treat package structure and repository validation separately from proven execution parity on every Claude surface.
 
 ### `codebase-docs`
 
@@ -457,18 +445,8 @@ The native repository marketplace is:
 .agents/plugins/marketplace.json
 ```
 
-It contains six plugins:
-
-```text
-system-architect
-prompt-design
-human-runbooks
-codebase-docs
-repo-instructions
-humanizer
-```
-
-`audit-workflow` is intentionally absent.
+It exposes the same catalog listed above, including `audit-workflow` for local
+Codex sessions with Python and trusted hooks.
 
 ## 3.1 Install from GitHub
 
@@ -487,12 +465,15 @@ codex plugin marketplace list
 Install the plugins you need:
 
 ```bash
+codex plugin add audit-workflow@artur-plugins
 codex plugin add system-architect@artur-plugins
 codex plugin add prompt-design@artur-plugins
 codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
+codex plugin add codex-ubuntu-server@artur-plugins
+codex plugin add uncompromising-handover@artur-plugins
 ```
 
 Equivalent explicit marketplace form for any one plugin:
@@ -532,6 +513,27 @@ Switch to the `artur-plugins` marketplace, open the desired plugin, and install 
 In the ChatGPT desktop app, open the **Plugins** tab, select `artur-plugins`, and install the desired portable plugin.
 
 Start a new chat or CLI session before first use so bundled skills and plugin content are loaded.
+
+### Audit Workflow in Codex
+
+After installing `audit-workflow`, open `/hooks` and review/trust its hook
+configuration. Hooks that have not been trusted are skipped; installation alone
+is insufficient. Use `$deep-review` or `$feature-scattering` for read-only work,
+and `$audit-discovery`, `$audit-triage`, `$audit-resolution`, or
+`$audit-verification` for the corresponding lifecycle role.
+
+Pass the absolute project directory as `root` to every `audit_*` MCP call. The
+portable MCP process starts from the installed package directory, so it refuses
+a missing/relative root instead of creating audit state inside the plugin cache.
+Claude retains its configured project-directory fallback.
+
+The Claude init/status/next commands remain unchanged. In Codex, their operations
+are available through `audit_init`, `audit_doctor`, `audit_summary`, and
+`audit_next`; no generated command copies are needed. The shared verification
+skill requires a fresh native subagent or another independent session, not a
+resolver merely switching role names. See the
+[audit invocation contract](plugins/audit-workflow/docs/CONTRACT.md#1-canonical-runtime-invocation)
+for CLI path setup and host boundaries.
 
 ## 3.3 Refresh / upgrade the marketplace
 
@@ -642,6 +644,8 @@ Inside Claude Code from the repository root:
 /plugin install codebase-docs@artur-plugins
 /plugin install repo-instructions@artur-plugins
 /plugin install humanizer@artur-plugins
+/plugin install codex-ubuntu-server@artur-plugins
+/plugin install uncompromising-handover@artur-plugins
 /reload-plugins
 ```
 
@@ -657,6 +661,8 @@ claude --plugin-dir ./plugins/human-runbooks
 claude --plugin-dir ./plugins/codebase-docs
 claude --plugin-dir ./plugins/repo-instructions
 claude --plugin-dir ./plugins/humanizer
+claude --plugin-dir ./plugins/codex-ubuntu-server
+claude --plugin-dir ./plugins/uncompromising-handover
 ```
 
 Use one `--plugin-dir` target per development session unless deliberately testing several plugin directories together.
@@ -679,6 +685,8 @@ codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
+codex plugin add codex-ubuntu-server@artur-plugins
+codex plugin add uncompromising-handover@artur-plugins
 ```
 
 For local marketplace installs, the runtime copy is cached under:
@@ -703,9 +711,12 @@ If source changes are not reflected, refresh/reinstall the plugin and restart th
 
 ## 4.3 Repo-local Codex enablement
 
-The repository marketplace makes the six portable plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
+The repository marketplace makes all nine plugins discoverable. In a trusted clone, project-level enablement can be controlled through `.codex/config.toml`:
 
 ```toml
+[plugins."audit-workflow@artur-plugins"]
+enabled = true
+
 [plugins."system-architect@artur-plugins"]
 enabled = true
 
@@ -723,6 +734,12 @@ enabled = true
 
 [plugins."humanizer@artur-plugins"]
 enabled = true
+
+[plugins."codex-ubuntu-server@artur-plugins"]
+enabled = true
+
+[plugins."uncompromising-handover@artur-plugins"]
+enabled = true
 ```
 
 Set any entry to `false` to disable it for the project without uninstalling it.
@@ -733,32 +750,13 @@ Codex reads project `.codex/config.toml` only for trusted projects.
 
 # 5. Why this repository has two marketplace manifests
 
-```text
-.claude-plugin/marketplace.json
-    Claude marketplace
-    -> audit-workflow
-    -> system-architect
-    -> prompt-design
-    -> human-runbooks
-    -> codebase-docs
-    -> repo-instructions
-    -> humanizer
+`.claude-plugin/marketplace.json` uses Claude's catalog format;
+`.agents/plugins/marketplace.json` uses the native OpenAI/Codex format. Both are
+named `artur-plugins` and expose the same plugin set. They reference the same
+plugin directories, not separate copies of the runtime or skills.
 
-.agents/plugins/marketplace.json
-    OpenAI-native repository marketplace
-    -> system-architect
-    -> prompt-design
-    -> human-runbooks
-    -> codebase-docs
-    -> repo-instructions
-    -> humanizer
-```
-
-Both marketplaces are named `artur-plugins`, but they intentionally target different hosts and expose different plugin sets.
-
-The ChatGPT desktop app also recognizes a repository-level `.claude-plugin/marketplace.json` as a legacy-compatible marketplace source. Current OpenAI documentation does not define a precedence contract for a repository that exposes both the native `.agents/plugins/marketplace.json` and the legacy-compatible Claude marketplace.
-
-For this repository, the intended Codex catalog is `.agents/plugins/marketplace.json`. Do not install `audit-workflow` into Codex merely because another surface happens to discover the Claude registry.
+Use the native `.agents/plugins/marketplace.json` for Codex. Plugin-local
+configuration selects the appropriate MCP and hooks integration for each host.
 
 ---
 
@@ -766,15 +764,17 @@ For this repository, the intended Codex catalog is `.agents/plugins/marketplace.
 
 ```text
 .claude-plugin/
-└── marketplace.json                  # Claude: all seven plugins
+└── marketplace.json                  # Claude: all nine plugins
 
 .agents/plugins/
-└── marketplace.json                  # OpenAI/Codex: six portable plugins
+└── marketplace.json                  # OpenAI/Codex: all nine plugins
 
 plugins/
 ├── audit-workflow/
+│   ├── plugin.json                   # portable metadata; selects hooks/codex.json
+│   ├── mcp.json                      # portable stdio launcher; explicit project root
 │   ├── .claude-plugin/plugin.json
-│   ├── .mcp.json
+│   ├── .mcp.json                     # Claude launcher
 │   ├── skills/
 │   │   ├── audit-discovery/
 │   │   ├── audit-triage/
@@ -825,13 +825,30 @@ plugins/
 │           ├── SKILL.md
 │           └── references/
 │
-└── humanizer/
+├── humanizer/
+│   ├── plugin.json                   # portable/OpenAI manifest
+│   ├── .claude-plugin/plugin.json
+│   └── skills/humanizer/SKILL.md
+│
+├── codex-ubuntu-server/
+│   ├── plugin.json                   # portable/OpenAI manifest
+│   ├── .claude-plugin/plugin.json
+│   └── skills/codex-ubuntu-server/
+│       ├── SKILL.md
+│       ├── references/
+│       ├── agents/openai.yaml
+│       └── assets/icon.svg
+│
+└── uncompromising-handover/
     ├── plugin.json                   # portable/OpenAI manifest
     ├── .claude-plugin/plugin.json
-    └── skills/humanizer/SKILL.md
+    └── skills/uncompromising-handover/
+        ├── SKILL.md
+        ├── agents/openai.yaml
+        └── assets/
 ```
 
-The five portable plugins other than `system-architect` intentionally use the canonical root `plugin.json` without adding duplicate `.codex-plugin/plugin.json` compatibility manifests. `system-architect` retains its existing compatibility overlay.
+The portable plugins other than `system-architect` use the canonical root `plugin.json` without adding duplicate `.codex-plugin/plugin.json` compatibility manifests. `system-architect` retains its existing compatibility overlay.
 
 ---
 
@@ -839,11 +856,11 @@ The five portable plugins other than `system-architect` intentionally use the ca
 
 ## `audit-workflow`
 
-- Requires `python3`; the supported full-runtime Claude Code target remains macOS/Linux.
+- Requires `python3`; the local integrations target macOS/Linux Claude Code and Codex.
 - `feature-scattering` helper requires Python 3.10+.
-- Native Windows Claude Code is not claimed as a supported full-runtime target by this repository version.
+- Native Windows is not claimed as a supported full-runtime target by this repository version.
 - Cowork runtime behavior for Python hooks and the local stdio MCP server is not claimed as verified.
-- Not published in the OpenAI/Codex marketplace.
+- Available in both repository marketplaces. Codex requires a local Python runtime, explicit MCP project roots, and trusted hooks; installed-host verification remains separate from package checks.
 - `deep-review` and `feature-scattering` are read-only by default and do not replace the canonical audit lifecycle/runtime.
 
 ## `system-architect`
@@ -878,6 +895,14 @@ The five portable plugins other than `system-architect` intentionally use the ca
 - Skill-only prose editor; no runtime, hooks, MCP server, or automatic processing of other skills' output.
 - Content accuracy and protected technical spans take precedence over stylistic changes.
 
+## `codex-ubuntu-server`
+
+- Instructions only; no bundled updater or daemon. Requires access to the selected Ubuntu host for actual operations. Changing an installation or remote-control service must be authorized, and installed-host behavior remains unverified by package checks.
+
+## `uncompromising-handover`
+
+- Skill and template only. A completed checkpoint must be readable by its recipient; a local file path alone is not proof of transfer.
+
 ## Verification boundary
 
 The repository's structural validator, Python compilation, and maintained helper checks are the repository-level validation boundary. Keep structural/package validation separate from installed-host execution:
@@ -906,17 +931,15 @@ Codex:
 codex plugin add system-architect@artur-plugins
 ```
 
-## Review / audit on Claude Code
+## Review / audit
 
 ```bash
 claude plugin install audit-workflow@artur-plugins
 ```
 
-Start read-only review with:
-
-```text
-/audit-workflow:deep-review
-```
+Start read-only review with `/audit-workflow:deep-review` in Claude Code.
+In Codex, install `audit-workflow@artur-plugins` with `codex plugin add`, review
+its hooks with `/hooks`, and invoke `$deep-review`.
 
 ## Portable authoring/tooling set
 
@@ -928,6 +951,7 @@ claude plugin install human-runbooks@artur-plugins
 claude plugin install codebase-docs@artur-plugins
 claude plugin install repo-instructions@artur-plugins
 claude plugin install humanizer@artur-plugins
+claude plugin install uncompromising-handover@artur-plugins
 ```
 
 Codex:
@@ -938,7 +962,10 @@ codex plugin add human-runbooks@artur-plugins
 codex plugin add codebase-docs@artur-plugins
 codex plugin add repo-instructions@artur-plugins
 codex plugin add humanizer@artur-plugins
+codex plugin add uncompromising-handover@artur-plugins
 ```
+
+For Codex administration on Ubuntu, install `codex-ubuntu-server@artur-plugins` separately with the appropriate Claude or Codex plugin command.
 
 There is no requirement to install the entire marketplace. Each plugin is a separate product boundary.
 

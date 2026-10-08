@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codex-ubuntu-server",
+  "version": "0.1.0",
+  "description": "Install, authenticate, update, diagnose, and recover Codex CLI on Ubuntu Server, with safe detached maintenance and remote-control guidance.",
+  "author": {
+    "name": "Artur Kulik",
+    "url": "https://mycmdline.com"
+  },
+  "keywords": [
+    "codex",
+    "ubuntu",
+    "server",
+    "operations",
+    "maintenance"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Codex Ubuntu Server",
+        "shortDescription": "Install and maintain Codex on Ubuntu Server",
+        "longDescription": "Operate Codex CLI on headless Ubuntu hosts: install, authenticate, update, diagnose, recover, and manage remote control when requested. Inspect the actual deployment and process owner; perform potentially disruptive maintenance through an independent supervisor and report observed results.",
+        "developerName": "Artur Kulik",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Ubuntu Codex setup",
+          "Codex CLI maintenance",
+          "Headless remote control"
+        ],
+        "defaultPrompt": [
+          "Use codex-ubuntu-server to inspect this Ubuntu host and install or repair Codex CLI.",
+          "Use codex-ubuntu-server to update Codex safely without interrupting the maintenance task."
+        ]
+      }
+    }
+  }
+}
