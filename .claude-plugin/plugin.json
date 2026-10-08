@@ -1,6 +1,6 @@
 {
   "name": "artur-plugins",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Kulik",
