@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+- Block full Claude `Write` of managed audit records; inspect actual `Edit`/`MultiEdit` substitutions for changes to protected Status fields, regardless of status value, without blocking evidence text.
+- Guard common in-place shell edits of managed audit records; retain the existing native and shell `apply_patch` checks.
+- Correct the documented CLI fallback to use explicit plugin and project roots.
+- Document the Codex AgentPlugin loader limitation: bundled hooks may not register; require installed-host confirmation or explicit trusted project/user hooks before claiming lifecycle protection.
+
 ## 1.4.0
 
 - Added portable Codex metadata, stdio MCP configuration, and explicit Codex hook wiring while retaining one audit runtime.

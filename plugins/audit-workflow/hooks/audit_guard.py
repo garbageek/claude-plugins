@@ -11,13 +11,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from plugin_root import plugin_root, project_dir
 
-LIFECYCLE_STATUSES = "PASS|PARTIAL|FAIL|READY_FOR_VERIFICATION|REGRESS|BLOCKED|WONTFIX|INVALID"
 AUDIT_MARKDOWN_PATH = r"(?:[^\s'\";&|<>]+[\\/])*audit[\\/](?:tickets|verification|triage)[\\/][^\s'\";&|<>]+\.md"
-STATUS_RE = re.compile(rf"(?:Verification\s+Status|Status)\s*[:=].*(?:{LIFECYCLE_STATUSES})", re.IGNORECASE | re.DOTALL)
-MD_STATUS_RE = re.compile(rf"\*\*(?:Verification\s+Status|Status):\*\*\s*`?(?:{LIFECYCLE_STATUSES})`?", re.IGNORECASE)
 AUDIT_FILE_RE = re.compile(rf"(?:^|[\s'\"<>=|&;]){AUDIT_MARKDOWN_PATH}")
 AUDIT_MARKDOWN_PATH_RE = re.compile(AUDIT_MARKDOWN_PATH, re.IGNORECASE)
-DIRECT_MUTATOR_RE = re.compile(r"\b(?:sed|perl|python|python3|ruby|node|awk|ed)\b.*(?:Status|Verification\s+Status).*(?:" + LIFECYCLE_STATUSES + r")", re.IGNORECASE | re.DOTALL)
+DIRECT_MUTATOR_RE = re.compile(r"\b(?:sed|perl|python|python3|ruby|node|awk|ed)\b.*(?:Verification\s+)?Status\s*:", re.IGNORECASE | re.DOTALL)
+INPLACE_MUTATOR_RE = re.compile(
+    r"\b(?:sed|perl|ruby)\b[^\n;&|]*\s(?:--in-place(?:=\S*)?|-[^\s]*i[^\s]*)(?=\s|$)",
+    re.IGNORECASE,
+)
 INDIRECT_AUDIT_WRITE_RE = re.compile(
     rf"(?:"
     rf"\b(?:mv|cp|tee|install|rsync|dd|truncate)\b[^\n;&|]*{AUDIT_MARKDOWN_PATH}"
@@ -113,9 +114,50 @@ def _touches_audit_file(payload: dict) -> bool:
                for m in AUDIT_MARKDOWN_PATH_RE.finditer(_as_text(tool_input)))
 
 
-def _contains_lifecycle_status(tool_input: dict) -> bool:
-    text = _as_text(tool_input)
-    return bool(STATUS_RE.search(text) or MD_STATUS_RE.search(text))
+def _edits_change_status(tool_input: dict, payload: dict) -> bool:
+    """Simulate Claude Edit/MultiEdit substitutions on real audit records.
+
+    Comparing the resulting status *fields*, not arbitrary text in a tool
+    payload, catches value-only changes (DRAFT -> OPEN) without rejecting an
+    evidence sentence such as "Evidence: HTTP Status: PASS was observed".
+    """
+    operations = tool_input.get("edits")
+    if not isinstance(operations, list):
+        operations = [tool_input]
+    if not operations or not all(
+        isinstance(op, dict) and isinstance(op.get("old_string"), str)
+        and isinstance(op.get("new_string"), str) for op in operations
+    ):
+        return True  # Unknown edit format: do not silently bypass audit guards.
+
+    paths = _file_paths(tool_input)
+    if not paths:
+        return True
+    for path in paths:
+        if not _is_audit_record(path, payload):
+            continue
+        candidate = Path(path.replace("\\", "/")).expanduser()
+        cwd = payload.get("cwd")
+        base = Path(cwd).expanduser() if isinstance(cwd, str) and cwd else project_dir(payload)
+        if not candidate.is_absolute():
+            candidate = base / candidate
+        try:
+            original = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return True  # Missing/unreadable machine state must not be rewritten.
+        updated = original
+        for op in operations:
+            old, new = op["old_string"], op["new_string"]
+            if not old or old not in updated:
+                return True  # Unrecognized substitution; refuse on managed state.
+            updated = updated.replace(old, new, -1 if op.get("replace_all") else 1)
+        if _status_fields(original) != _status_fields(updated):
+            return True
+    return False
+
+
+def _status_fields(markdown: str) -> list[str]:
+    return [line for line in markdown.splitlines() if STATUS_FIELD_RE.match(line)]
 
 
 # A segment that runs the bundled runtime (`python3 ".../scripts/audit.py" verify ...`)
@@ -171,7 +213,8 @@ def _segment_writes_audit(segment: str, tool: str) -> bool:
         return bool(re.search(rf"(?:>|>>)\s*{AUDIT_MARKDOWN_PATH}", segment, re.IGNORECASE))
     if not AUDIT_MARKDOWN_PATH_RE.search(segment):
         return False
-    common = DIRECT_MUTATOR_RE.search(segment) or INDIRECT_AUDIT_WRITE_RE.search(segment)
+    common = (DIRECT_MUTATOR_RE.search(segment) or INPLACE_MUTATOR_RE.search(segment)
+              or INDIRECT_AUDIT_WRITE_RE.search(segment))
     powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(segment)
     return bool(common or powershell)
 
@@ -185,7 +228,8 @@ def _shell_direct_audit_write(command: str, tool: str, payload: dict) -> bool:
     if not runtime:
         # Whole-command matching keeps pipelines such as `cat x | sed ... | tee x` and
         # PowerShell `(Get-Content x) -replace ... | Set-Content x` detectable.
-        common = DIRECT_MUTATOR_RE.search(command) or INDIRECT_AUDIT_WRITE_RE.search(command)
+        common = (DIRECT_MUTATOR_RE.search(command) or INPLACE_MUTATOR_RE.search(command)
+                  or INDIRECT_AUDIT_WRITE_RE.search(command))
         powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(command)
         return bool(common or powershell)
     if any(_segment_writes_audit(seg, tool) for seg in runtime):
@@ -193,7 +237,8 @@ def _shell_direct_audit_write(command: str, tool: str, payload: dict) -> bool:
     rest = "\n".join(seg for seg in segments if seg not in runtime)
     if not rest or not AUDIT_MARKDOWN_PATH_RE.search(rest):
         return False
-    common = DIRECT_MUTATOR_RE.search(rest) or INDIRECT_AUDIT_WRITE_RE.search(rest)
+    common = (DIRECT_MUTATOR_RE.search(rest) or INPLACE_MUTATOR_RE.search(rest)
+              or INDIRECT_AUDIT_WRITE_RE.search(rest))
     powershell = tool == "PowerShell" and POWERSHELL_AUDIT_WRITE_RE.search(rest)
     return bool(common or powershell)
 
@@ -211,7 +256,7 @@ def _run_audit(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
 # Codex sends apply_patch source text in tool_input.command, not Edit/Write fields.
 PATCH_FILE_RE = re.compile(r"^\*\*\* (Add|Update|Delete) File: (.+)$")
 PATCH_MOVE_RE = re.compile(r"^\*\*\* Move to: (.+)$")
-STATUS_FIELD_RE = re.compile(r"^\s*(?:\*\*)?(?:Verification\s+)?Status(?:\*\*)?\s*:", re.IGNORECASE)
+STATUS_FIELD_RE = re.compile(r"^\s*(?:\*\*(?:Verification\s+)?Status:\*\*|(?:Verification\s+)?Status\s*:)", re.IGNORECASE)
 
 
 def _patch_changes(command: str) -> list[dict]:
@@ -308,10 +353,16 @@ def pre_tool_use(payload: dict) -> int:
             )
         return 0
 
-    if tool in {"Edit", "Write", "MultiEdit"}:
-        if _touches_audit_file(payload) and _contains_lifecycle_status(tin):
+    if tool == "Write" and _touches_audit_file(payload):
+        return _deny(
+            "Full Write of machine-managed audit records is blocked, regardless of content. "
+            "Use the audit CLI/MCP runtime for lifecycle changes."
+        )
+    if tool in {"Edit", "MultiEdit"} and _touches_audit_file(payload):
+        if _edits_change_status(tin, payload):
             return _deny(
-                "Direct edits to audit lifecycle status fields are blocked. Use audit CLI/MCP commands so role, state-machine, and evidence gates run."
+                "Direct changes to audit Status/Verification Status fields are blocked. "
+                "Use audit CLI/MCP commands so role, state-machine, and evidence gates run."
             )
     return 0
 

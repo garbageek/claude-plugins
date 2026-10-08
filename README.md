@@ -20,9 +20,11 @@ This README covers repository-specific installation, plugin usage, runtime notes
 | `artur-plugin-creator` | yes | yes | `create-plugin`, `inspect-plugin`, `update-plugin` | Source/file tools for authoring; Plugin Creator backend only for requested hosted operations |
 
 Both marketplaces expose the same plugins listed above. `audit-workflow` includes a
-local Python/MCP runtime and host-specific hook configurations; Codex hooks must
-be reviewed and trusted before they run. Repository validation is not proof of
-installed-host behavior.
+local Python/MCP runtime and host-specific hook configurations. Current Codex
+AgentPlugin loader code can skip bundled hooks even when the portable manifest
+specifies them. Inspect `/hooks`; when missing, use the explicit activation
+procedure in the [audit plugin README](plugins/audit-workflow/README.md#codex-hook-activation).
+Repository validation does not prove installed-host behavior.
 
 ---
 
@@ -176,13 +178,19 @@ Normal lifecycle flows remain:
 /audit-workflow:audit-verification
 ```
 
-The canonical Python CLI fallback is unchanged:
+The canonical Python CLI fallback requires the actual installed plugin path
+and the target project path; Claude hook substitutions are not guaranteed in a
+normal Bash session:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
+export AUDIT_PLUGIN_ROOT="/absolute/installed/audit-workflow"
+export AUDIT_PROJECT_DIR="/absolute/target/project"
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" summary
 ```
+
+Replace these placeholders with observed absolute paths.
 
 From a repository clone:
 
@@ -466,7 +474,9 @@ The native repository marketplace is:
 ```
 
 It exposes the same catalog listed above, including `audit-workflow` for local
-Codex sessions with Python and trusted hooks.
+Codex skills and MCP. Protected lifecycle behavior also requires hooks that
+are actually registered and trusted; portable plugin hook loading must be
+verified separately.
 
 ## 3.1 Install from GitHub
 
@@ -537,11 +547,14 @@ Start a new chat or CLI session before first use so bundled skills and plugin co
 
 ### Audit Workflow in Codex
 
-After installing `audit-workflow`, open `/hooks` and review/trust its hook
-configuration. Hooks that have not been trusted are skipped; installation alone
-is insufficient. Use `$deep-review` or `$feature-scattering` for read-only work,
-and `$audit-discovery`, `$audit-triage`, `$audit-resolution`, or
-`$audit-verification` for the corresponding lifecycle role.
+After installing `audit-workflow`, inspect `/hooks` **before** using protected
+audit lifecycle operations. Some Codex AgentPlugin loader versions skip bundled
+hook sources entirely, even when `plugin.json` declares them. Trusting hooks
+only helps if they appear in `/hooks`. When absent, use the documented
+[explicit Codex hook activation](plugins/audit-workflow/README.md#codex-hook-activation)
+and verify an actual blocked edit. Use `$deep-review` or `$feature-scattering`
+for read-only work, and `$audit-discovery`, `$audit-triage`, `$audit-resolution`,
+or `$audit-verification` for the corresponding lifecycle role.
 
 Pass the absolute project directory as `root` to every `audit_*` MCP call. The
 portable MCP process starts from the installed package directory, so it refuses
@@ -897,7 +910,7 @@ The portable plugins other than `system-architect` use the canonical root `plugi
 - `feature-scattering` helper requires Python 3.10+.
 - Native Windows is not claimed as a supported full-runtime target by this repository version.
 - Cowork runtime behavior for Python hooks and the local stdio MCP server is not claimed as verified.
-- Available in both repository marketplaces. Codex requires a local Python runtime, explicit MCP project roots, and trusted hooks; installed-host verification remains separate from package checks.
+- Available in both repository marketplaces. Codex requires local Python and explicit MCP project roots; protected lifecycle workflows additionally require hooks visibly registered and trusted in the installed Codex host. Current portable AgentPlugin loaders may omit them; see the [manual activation path](plugins/audit-workflow/README.md#codex-hook-activation).
 - `deep-review` and `feature-scattering` are read-only by default and do not replace the canonical audit lifecycle/runtime.
 
 ## `system-architect`
@@ -982,8 +995,10 @@ claude plugin install audit-workflow@artur-plugins
 ```
 
 Start read-only review with `/audit-workflow:deep-review` in Claude Code.
-In Codex, install `audit-workflow@artur-plugins` with `codex plugin add`, review
-its hooks with `/hooks`, and invoke `$deep-review`.
+In Codex, install `audit-workflow@artur-plugins` with `codex plugin add` and
+invoke `$deep-review`. For lifecycle operations, check `/hooks` and follow the
+[audit hook activation instructions](plugins/audit-workflow/README.md#codex-hook-activation)
+if bundled hooks are not loaded.
 
 ## Portable authoring/tooling set
 

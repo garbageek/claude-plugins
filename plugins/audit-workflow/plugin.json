@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "audit-workflow",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Evidence-first audit lifecycle with read-only deep review, feature-scattering analysis, shared fix proof, independent verification, hooks, and MCP tools.",
   "author": {
     "name": "Artur Kulik",
@@ -21,7 +21,7 @@
       "interface": {
         "displayName": "Audit Workflow",
         "shortDescription": "Evidence-led reviews and audit ticket lifecycle",
-        "longDescription": "Read-only deep review and feature-scattering analysis, plus discovery, triage, resolution, and independent verification through one local Python runtime. Local Claude Code and Codex integration; Codex hooks require explicit trust.",
+        "longDescription": "Read-only deep review and feature-scattering analysis, plus governed discovery, triage, resolution, and independent verification through one Python runtime. Claude hooks are bundled; Codex skills/MCP are portable, but Codex audit hooks require confirmed host registration and trust.",
         "developerName": "Artur Kulik",
         "category": "Developer Tools",
         "capabilities": [

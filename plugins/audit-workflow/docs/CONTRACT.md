@@ -44,9 +44,10 @@ wrapper.
 - Claude uses `.mcp.json`, `hooks/hooks.json`, the shared skills, and its existing
   `agents/` and `commands/` entry points. Its configured project directory remains
   a supported MCP default; an explicit `root` takes precedence.
-- Codex uses root `plugin.json` and `mcp.json`. The OpenAI extension explicitly
-  selects `hooks/codex.json` instead of the default Claude hook file. Both launch
-  the same Python MCP server and guard. The portable launch requires a nonempty,
+- Codex uses root `plugin.json` and `mcp.json`. The OpenAI extension declares
+  `hooks/codex.json` instead of the default Claude hook file, but some Codex
+  AgentPlugin loaders **do not register those hooks**. The MCP launcher still
+  uses the shared Python server. The portable launch requires a nonempty,
   absolute, existing `root` for every MCP tool call; missing/invalid roots return
   a tool error without creating state. A portable MCP process starts in the
   installed plugin directory, so its `cwd` is not a project default.
@@ -60,11 +61,13 @@ wrapper.
   the skill and inspect the source independently, not inherit the resolver's
   verdict as fact. When native delegation is unavailable, hand off to another
   session/reviewer; the resolver must not simply relabel itself as verification.
-- Trust Codex plugin hooks through `/hooks` after inspecting their definitions.
-  Installation alone does not enable untrusted hooks. `PreToolUse` handles the
-  actual `apply_patch` payload; `PostToolUse` diagnoses touched audit records;
-  `SessionStart` reports existing state; `Stop` emits an advisory health warning
-  without automatically continuing or modifying the project.
+- Verify Codex hook registration through `/hooks` **before** trusting or relying
+  on the definitions. If absent, use the supported opt-in project/user hook
+  configuration described in [the plugin README](../README.md#codex-hook-activation)
+  with an absolute installed-plugin path and verify execution in the target host.
+  When running, `PreToolUse` guards covered `apply_patch` writes,
+  `PostToolUse` diagnoses touched records, `SessionStart` reports state, and
+  `Stop` emits an advisory warning without modifying the project.
 
 Role arguments enforce the transition matrix in the runtime; they are not
 agent-identity authentication. Tool hooks are additional guardrails for covered

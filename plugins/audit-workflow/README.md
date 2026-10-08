@@ -29,8 +29,9 @@ codex plugin add audit-workflow@artur-plugins
 ```
 
 For an unpacked local checkout, use its absolute path instead of
-`garbageek/claude-plugins`. Open `/hooks` and review/trust this plugin's hooks;
-installing the plugin does not grant hook trust.
+`garbageek/claude-plugins`. Codex plugin installation does not guarantee that
+bundled hooks are registered: follow the procedure below before relying on
+audit lifecycle guardrails.
 
 Invoke the shared skills as `$deep-review`, `$feature-scattering`,
 `$audit-discovery`, `$audit-triage`, `$audit-resolution`, or `$audit-verification`.
@@ -42,6 +43,35 @@ installed-plugin and project paths, as defined in the
 Verification runs in a fresh native Codex subagent or another independent
 session, not by changing the resolver's role label. No custom Codex agents,
 user settings, or project instruction files are installed automatically.
+
+### Codex hook activation
+
+**Verify hook discovery; do not infer it from plugin installation.** The portable
+manifest points at `hooks/codex.json`, as described by [OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins).
+However, the inspected [Codex AgentPlugin loader](https://github.com/openai/codex/blob/main/codex-rs/core-plugins/src/loader.rs)
+returns no hook sources for that manifest format. A different installed version
+may behave differently. This is an upstream limitation, not a missing audit
+Python handler.
+
+1. Open `/hooks` after installation. If the plugin's `PreToolUse` and `PostToolUse`
+   hooks are present, review and trust their exact definitions.
+2. If they are absent, resolve the **actual installed** `audit-workflow` directory
+   containing `hooks/audit_guard.py`. For a trusted target project, copy the
+   existing `hooks/codex.json` into `<project>/.codex/hooks.json` (or merge its
+   event groups into an existing hook file; **never overwrite existing hooks**).
+   Replace every `${PLUGIN_ROOT}` in the copied commands with that installed
+   directory's absolute path. Do not assume the plugin-only environment variable
+   is available to project/user hook definitions.
+3. Restart the local Codex session. Open `/hooks`, review and trust those hooks,
+   then verify the real `PreToolUse` blocks a direct managed audit-ticket status
+   edit and still permits an ordinary evidence edit. Re-check the paths and trust
+   status after updating or reinstalling the plugin.
+
+This is an opt-in project/user hook configuration supported by Codex, **not an
+automatic portable-plugin fix**. If the hooks cannot be confirmed running,
+treat the Codex plugin as skills/MCP-capable but do **not** claim guarded audit
+state or full Claude/Codex lifecycle parity. Hooks are defense in depth and do
+not replace filesystem permissions or the canonical `audit.py` state machine.
 
 ## Review without creating audit state
 
@@ -68,13 +98,18 @@ The existing runtime and lifecycle remain unchanged.
 /audit-workflow:audit-status
 ```
 
-Prefer the structured `audit_*` MCP tools. CLI fallback inside Claude plugin content:
+Prefer the structured `audit_*` MCP tools. For an ordinary Bash CLI fallback,
+resolve the actual installed plugin and target project paths first:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" init
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/audit.py" summary
+export AUDIT_PLUGIN_ROOT="/absolute/installed/audit-workflow"
+export AUDIT_PROJECT_DIR="/absolute/target/project"
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" summary
 ```
+
+Replace the placeholder paths; a normal shell need not export `CLAUDE_PLUGIN_ROOT`.
 
 From a repository clone, use:
 
@@ -104,8 +139,10 @@ python3 plugins/audit-workflow/scripts/audit.py <command> [options]
 ## Platform scope
 
 The runtime requires `python3`; the local integration targets macOS/Linux Claude
-Code and Codex. Codex uses `mcp.json` and `hooks/codex.json`; Claude retains
-`.mcp.json` and `hooks/hooks.json`. Both configurations invoke the same runtime.
+Code and Codex. Codex uses `mcp.json` and declares `hooks/codex.json`; Claude
+retains `.mcp.json` and `hooks/hooks.json`. Codex's current AgentPlugin loader
+may skip the declared hooks; verify or activate hooks explicitly as described
+above. Where hooks are loaded, both hosts invoke the same Python guard.
 `Stop` reports health without starting another turn or changing audit state.
 
 A successful package check or direct Python/MCP run does not establish an
