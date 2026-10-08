@@ -1,6 +1,6 @@
 # Maintenance and recovery
 
-Adapted from the user's installation v4 document. Baseline: local CLI 0.160.0 help checked on 2026-10-05. Verify version-specific behavior on the Ubuntu target.
+Check the installed Codex version and command help on the target Ubuntu host before maintenance; command options and daemon behavior can vary by release.
 
 ## Inspect
 
@@ -40,7 +40,7 @@ codex app-server daemon update
 codex app-server daemon version
 ```
 
-This may interrupt work. `--from-cli` copies and pins the invoking CLI package, changing lifecycle semantics. The supplied document records that 0.160.0 accepts `--yes` only with `--from-cli`; help text alone does not show that restriction. Check the target implementation/documentation before adding flags. Prefer the ordinary command for ordinary release updates.
+This may interrupt work. `--from-cli` copies and pins the invoking CLI package, changing lifecycle semantics. Check the target version's implementation/documentation before combining `--yes` with `--from-cli`; help text may not reveal all flag restrictions. Prefer the ordinary command for ordinary release updates.
 
 ## Autonomous self-maintenance
 

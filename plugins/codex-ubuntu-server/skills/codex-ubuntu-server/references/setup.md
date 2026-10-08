@@ -1,6 +1,6 @@
 # Setup and normal operation
 
-Adapted from the user's `codex-ubuntu-server-installation-v4.md`. Local CLI 0.160.0 help checked on 2026-10-05; this does not establish Ubuntu runtime behavior. Verify commands on the target.
+Verify CLI command availability and actual behavior on the target Ubuntu host; documented interfaces do not establish that a particular installation is working.
 
 ## Install
 

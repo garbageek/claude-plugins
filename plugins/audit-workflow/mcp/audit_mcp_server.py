@@ -42,6 +42,9 @@ def default_root(args: dict[str, Any] | None = None) -> Path:
     root = Path(value).expanduser().resolve() if value else project_dir()
     if not root.is_dir():
         raise ValueError(f"Project root is not an existing directory: {root}")
+    installed = plugin_root().resolve()
+    if root == installed or installed in root.parents:
+        raise ValueError(f"Project root cannot be inside the installed audit-workflow plugin: {root}")
     return root
 
 
