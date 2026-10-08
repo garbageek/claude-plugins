@@ -88,8 +88,14 @@ def validate_marketplaces(name, codex):
 
 
 def validate_skills(name):
-    skills = sorted((ROOT / "skills").glob("*/SKILL.md"))
-    require(skills, "Missing skills")
+    directories = sorted(path for path in (ROOT / "skills").iterdir()
+                         if path.is_dir() and not path.name.startswith("."))
+    require(directories, "Missing skills")
+    skills = []
+    for directory in directories:
+        path = directory / "SKILL.md"
+        require(path.is_file(), f"{directory}: skill directory has no SKILL.md")
+        skills.append(path)
     names = set()
     for path in skills:
         meta = frontmatter(path)
@@ -101,6 +107,10 @@ def validate_skills(name):
         desc = meta.get("description")
         require(isinstance(desc, str) and 0 < len(desc) <= 1024, f"{path}: invalid description")
         require(len(f"{name}:{skill_name}") <= 64, f"{path}: namespaced identity exceeds repository limit")
+    # This toolkit's promised plugin lifecycle, not a platform requirement.
+    required = {"create-plugin", "inspect-plugin", "update-plugin", "install-agent-plugins"}
+    missing = required - names
+    require(not missing, f"Missing plugin lifecycle skills: {', '.join(sorted(missing))}")
     for path in (ROOT / "agents").glob("*.md"):
         meta = frontmatter(path)
         for skill in meta.get("skills", []):

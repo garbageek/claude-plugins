@@ -9,6 +9,11 @@ Inspect first, change nothing unless the user separately asks for an edit. Read 
 shared [platform contracts](../../references/plugin-authoring.md) for host-specific
 manifest authority and compatibility boundaries.
 
+For installed-plugin discovery, enablement, stale cache or installation
+troubleshooting, use [install-agent-plugins](../install-agent-plugins/SKILL.md)
+in read-only mode until the user authorizes a host change. This skill inspects
+package contents/releases; it does not silently refresh or reinstall the host copy.
+
 ## Select the actual source
 
 For an attached archive or local repository, inspect that exact source; no Plugin
@@ -29,6 +34,9 @@ as proof the plugin does not exist or that edit access was denied.
    call `get_plugin_files` first without `read_paths`, then follow every `next_offset`
    needed for the requested inventory. Do not guess unread paths.
 2. Read relevant text in batches of at most 20 exact `read_paths` from that inventory.
+   The current reader reports missing text paths in `missing_paths` alongside
+   readable content; inspect that field rather than assuming every requested file
+   was returned. Refresh the inventory/release if it changed and correct the paths.
    Use `get_owned_plugin_archive` for binary, oversized, or unavailable content. For
    full-plugin inspection, finish the inventory before describing all components;
    for focused work, state the inspected scope. Local sources follow the same

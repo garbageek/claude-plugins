@@ -10,6 +10,10 @@ a generic feature checklist or add components merely because plugins support the
 Read the shared [platform contracts](../../references/plugin-authoring.md) before
 authoring manifests or claiming host compatibility.
 
+For installing or upgrading an already published package on a client, use
+[install-agent-plugins](../install-agent-plugins/SKILL.md). Do not create a new
+package/release when the user only wants an existing plugin installed.
+
 ## Target and delivery
 
 Infer the target from the request: **Claude**, **Codex**, or **both**. Default a new

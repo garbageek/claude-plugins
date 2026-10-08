@@ -7,6 +7,10 @@ description: Install, authenticate, update, diagnose, or recover Codex CLI on Ub
 
 Complete the requested lifecycle task on the identified Ubuntu host as its normal Unix user. Prefer standalone installation for new hosts; preserve an existing installation method and app-server owner unless migration is requested.
 
+For installing, upgrading, disabling or removing plugins **inside** Codex, use
+[install-agent-plugins](../install-agent-plugins/SKILL.md). This skill owns the
+Codex CLI installation and Ubuntu process/service lifecycle, not plugin packages.
+
 ## Establish context
 
 - Resolve the target host, Unix user, and operation from the conversation or available connection. Ask only for genuinely missing information. A local Windows shell is not the Ubuntu target.

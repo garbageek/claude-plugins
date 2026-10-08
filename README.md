@@ -2,7 +2,7 @@
 
 **Artur Plugins** is one installable engineering toolkit for Claude Code and Codex.
 Architecture, audits, documentation, repository guidance, prompts, writing,
-operations, handover, and plugin authoring share one package and one namespace:
+operations, handover, plugin authoring, and installation management share one package and one namespace:
 `artur-plugins`. The marketplace is also named `artur-plugins`.
 
 Skills load for the requested task; installing the toolkit does not authorize
@@ -26,11 +26,25 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Codex on Ubuntu | `codex-ubuntu-server` | Access to the selected Ubuntu host |
 | Session continuity | `uncompromising-handover` | An accessible checkpoint destination |
 | Plugin authoring | `create-plugin`, `inspect-plugin`, `update-plugin` | Local files; connected Plugin Creator only for hosted operations |
+| Plugin installation and management | [`install-agent-plugins`](skills/install-agent-plugins/SKILL.md) | Access to the selected host plugin manager/CLI; no Plugin Creator backend required |
 
 Python 3.10+ is required for the bundled runtime and helpers. Other skills do not
 require Python merely to read their instructions. No new agent framework or
 mandatory session-start methodology is installed. Audit hooks only act on the
 selected project's audit records; unrelated work stays outside that lifecycle.
+
+For plugin installation and installed-copy updates, use
+`/artur-plugins:install-agent-plugins` in Claude Code or `$install-agent-plugins`
+in Codex. It covers other plugins as well as this toolkit. `update-plugin` edits
+source/publishes a release; it is not an installer.
+
+For the **first installation of this toolkit**, use the native commands in
+[Claude Code installation](#11-install-from-github) or
+[Codex installation](#31-install-from-github), or the
+[local source procedure](#4-work-from-a-local-clone). A skill bundled inside an
+uninstalled plugin cannot bootstrap its own discovery. The same
+[installation skill source](skills/install-agent-plugins/SKILL.md) can be read
+from the checkout/archive before installation.
 
 ## Package and host boundaries
 
@@ -52,7 +66,7 @@ do not prove installed-host behavior. See [audit activation](docs/audit/README.m
 
 ## 1.1 Install from GitHub
 
-Register the GitHub marketplace once.
+Register the GitHub marketplace once. Inspect existing registrations first; reuse a matching source and do not silently replace another source with the same name.
 
 Inside a Claude Code session:
 
@@ -88,7 +102,7 @@ Each interactive `/plugin install ...` opens plugin details first so you can rev
 | `project` | Enabled for collaborators in this repository | `.claude/settings.json` |
 | `local` | Enabled only for you in this repository | `.claude/settings.local.json` |
 
-Example:
+Choose one scope, rather than running all three examples:
 
 ```bash
 claude plugin install artur-plugins@artur-plugins --scope user
@@ -177,10 +191,10 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" su
 
 Replace these placeholders with observed absolute paths.
 
-From a repository clone:
+From the toolkit repository root, keep the target project explicit:
 
 ```bash
-python3 scripts/audit.py <command> [options]
+python3 scripts/audit.py --root "/absolute/target/project" <command> [options]
 ```
 
 ### Architecture and recovery
@@ -252,8 +266,8 @@ Use `/artur-plugins:uncompromising-handover` to create a self-contained continua
 
 ### Plugin authoring
 
-[Artur Plugin Creator](skills/create-plugin/SKILL.md)
-creates, inspects, and updates plugins for Claude Code, Codex, or both. It selects
+The [plugin authoring skills](skills/create-plugin/SKILL.md)
+create, inspect, and update plugins for Claude Code, Codex, or both. It selects
 portable or native manifests for the required client capabilities and shares
 skills. MCP, hooks, and agents need actual host adapters, not a compatibility label.
 Local repository/archive work does not require the Plugin Creator backend.
@@ -264,16 +278,24 @@ requires the separately connected backend. Updates use release guards and explic
 `delete_paths`; omitting a file from an upload is not deletion. Preparing an archive
 does not publish to a Claude account, an OpenAI account, GitHub, or a public directory.
 
+### Plugin installation and management
+
+Use `/artur-plugins:install-agent-plugins` in Claude Code or
+`$install-agent-plugins` in Codex to install, enable, disable, upgrade, remove, or
+troubleshoot a client installation. The skill reads the actual target host and
+marketplace identity, distinguishes source registration from installation, and
+checks the installed copy separately from MCP/hook activation. It also covers
+Claude account uploads, local development loading, private sources, cache drift,
+and migration from the former standalone installations.
+
+[Full workflow](skills/install-agent-plugins/SKILL.md). No hosted Plugin Creator
+backend is needed. It does not modify plugin source or publish a release to
+satisfy an installed-version update, and it never treats commands for another
+machine as executed actions.
+
 ## 1.4 Enable or disable
 
 Enable or disable the toolkit:
-
-```bash
-claude plugin disable artur-plugins@artur-plugins
-claude plugin enable artur-plugins@artur-plugins
-```
-
-For example:
 
 ```bash
 claude plugin disable artur-plugins@artur-plugins
@@ -296,11 +318,7 @@ Update the installed toolkit:
 claude plugin update artur-plugins@artur-plugins
 ```
 
-The same command updates all bundled workflows:
-
-```bash
-claude plugin update artur-plugins@artur-plugins
-```
+This one plugin update updates all bundled workflows.
 
 These operations are different:
 
@@ -341,12 +359,6 @@ Remove the toolkit:
 claude plugin uninstall artur-plugins@artur-plugins
 ```
 
-For example:
-
-```bash
-claude plugin uninstall artur-plugins@artur-plugins
-```
-
 Remove the marketplace separately when no longer needed:
 
 ```bash
@@ -371,7 +383,7 @@ Manage installed plugins with:
 + -> Plugins -> Manage plugins
 ```
 
-The plugin browser is not available in Claude Code cloud sessions.
+Cloud sessions have a separate execution environment and capability set. Check the selected surface’s current supported setup path; do not assume a local plugin installation is available there.
 
 ### VS Code
 
@@ -423,7 +435,7 @@ The reverse does not happen automatically: a plugin installed only with `/plugin
 
 ### Instruction-only workflows
 
-Architecture, prompt design, human runbooks, repository instructions, prose editing, handover, and plugin authoring are skill/reference workflows. They do not require executing a bundled local runtime to read or follow the instructions. Actual file, web, and connected-service capabilities still depend on the host; packaging is not proof of execution parity.
+Architecture, prompt design, human runbooks, repository instructions, prose editing, handover, plugin authoring, and installation management are skill/reference workflows. They do not require executing a bundled local runtime to read or follow the instructions. Actual file, web, and connected-service capabilities still depend on the host; packaging is not proof of execution parity.
 
 ### Codebase documentation
 
@@ -493,7 +505,11 @@ codex plugin list --json
 codex plugin list --marketplace artur-plugins --available --json
 ```
 
-`--available` includes marketplace plugins that are not installed and requires `--json`.
+`--available` includes marketplace plugins that are not installed and requires
+`--json`; being listed as available does not prove installation. `codex plugin add
+artur-plugins@artur-plugins --json` returns the installed identity/version and
+`installedPath`. Inspect that actual runtime copy rather than assuming the source
+checkout was updated in place.
 
 Do not use `codex plugin install`; the documented Codex subcommand is `codex plugin add`.
 
@@ -671,7 +687,12 @@ Therefore during Codex development:
 source directory != installed runtime copy
 ```
 
-If source changes are not reflected, refresh/reinstall the plugin and restart the relevant local client.
+If source changes are not reflected, inspect the actual installed path/version
+and use the supported reinstall/reload flow. `codex plugin marketplace upgrade`
+refreshes Git marketplaces, not this local directory source. Preserve the selected
+source, enablement and relevant setup across a reinstall. Do not edit host cache
+files by hand or use sparse checkout for this root plugin that omits its shared
+skills, hooks, MCP, references or scripts.
 
 ## 4.3 Repo-local Codex enablement
 
@@ -800,6 +821,13 @@ checkout; generated project state belongs to the selected external workspace.
   backend tools. Backend IDs, release guards, and hosted results do not apply to a
   local archive. Claimed host behavior still requires actual host execution.
 
+## Plugin installation and management
+
+- Uses the selected host's existing plugin manager, CLI or supported UI, not a new installer service.
+- Distinguishes registration, installation, enablement, skill discovery, MCP connection and hook execution.
+- Instructions printed for another machine do not establish installation on that machine.
+- Preserves local versus account scope and existing settings; publishing new source is a separate workflow.
+
 ## Verification boundary
 
 The repository's structural validator, Python compilation, and maintained helper checks are the repository-level validation boundary. Keep structural/package validation separate from installed-host execution:
@@ -821,9 +849,11 @@ Install `artur-plugins` once, then invoke only the relevant skill. Examples:
 /artur-plugins:deep-review
 /artur-plugins:code-to-prd
 /artur-plugins:create-plugin
+/artur-plugins:install-agent-plugins
 ```
 
-Codex uses the same names with `$`, for example `$architect` or `$deep-review`.
+Codex uses the same names with `$`, for example `$architect`, `$deep-review`, or
+`$install-agent-plugins`.
 Read-only review does not start a ticket lifecycle. A prompt request produces a
 prompt, not an unrequested implementation. Handover creates the requested checkpoint,
 not a new workflow engine. Plugin publication and Ubuntu maintenance require their
@@ -834,7 +864,12 @@ external writes.
 
 # 9. Repository validation
 
-The repository's GitHub Actions workflow validates both marketplace registries, plugin metadata/frontmatter, local package links, manifest identity/version consistency, OpenAI interface/category consistency, required layout invariants, and maintained Python helpers.
+The repository's GitHub Actions workflow validates both marketplace registries,
+plugin metadata/frontmatter, local package links, manifest identity/version
+consistency, OpenAI interface/category consistency, required layout invariants,
+and maintained Python helpers. It also rejects skill directories without an entry
+file and an incomplete create/inspect/update/install plugin workflow set; valid
+remaining files must not hide a missing required skill.
 
 Local validation from the repository root:
 
