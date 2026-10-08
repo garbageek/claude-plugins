@@ -1,6 +1,6 @@
 {
   "name": "artur-plugins",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Kulik",
@@ -33,6 +33,8 @@
       "Review this repository without changing files.",
       "Design an implementation-ready architecture for this task.",
       "Create, inspect, update, or install a plugin for Claude Code and Codex."
-    ]
+    ],
+    "composerIcon": "./skills/architect/assets/composer-icon.png",
+    "logo": "./skills/architect/assets/logo.png"
   }
 }
