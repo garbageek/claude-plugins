@@ -1,0 +1,5 @@
+interface:
+  display_name: "Recover"
+  short_description: "Recover scoped regressions using trusted baselines"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

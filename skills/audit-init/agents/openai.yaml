@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Init"
+  short_description: "Initialize a governed audit ticket workspace"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Init Repo Instructions"
+  short_description: "Create source-backed agent instructions for a repo"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

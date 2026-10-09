@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Triage"
+  short_description: "Prioritize tickets and set executable dependencies"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

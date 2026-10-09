@@ -1,0 +1,5 @@
+interface:
+  display_name: "Create Plugin"
+  short_description: "Create Claude Code or Codex plugins and workflows"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

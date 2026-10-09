@@ -1,0 +1,5 @@
+interface:
+  display_name: "Install Agent Plugins"
+  short_description: "Install, update, or troubleshoot installed plugins"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

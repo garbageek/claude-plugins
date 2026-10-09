@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Next"
+  short_description: "Select next eligible ticket without changing state"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

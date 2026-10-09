@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review Repo Instructions"
+  short_description: "Review existing agent instructions for drift and gaps"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"
