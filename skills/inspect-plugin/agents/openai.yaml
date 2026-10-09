@@ -1,0 +1,5 @@
+interface:
+  display_name: "Inspect Plugin"
+  short_description: "Inspect plugin structure and behavior without edits"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

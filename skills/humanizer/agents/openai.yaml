@@ -1,0 +1,5 @@
+interface:
+  display_name: "Humanizer"
+  short_description: "Revise formulaic prose while preserving author voice"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

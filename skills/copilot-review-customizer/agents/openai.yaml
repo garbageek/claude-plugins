@@ -1,0 +1,5 @@
+interface:
+  display_name: "Copilot Review Customizer"
+  short_description: "Customize GitHub Copilot PR review for a repository"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"
