@@ -34,7 +34,7 @@
       "Design an implementation-ready architecture for this task.",
       "Create, inspect, update, or install a plugin for Claude Code and Codex."
     ],
-    "composerIcon": "./skills/architect/assets/composer-icon.png",
-    "logo": "./skills/architect/assets/logo.png"
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
   }
 }

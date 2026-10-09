@@ -1,0 +1,5 @@
+interface:
+  display_name: "Human Execution Runbook"
+  short_description: "Plan and track human-operated execution steps"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Status"
+  short_description: "Inspect audit health, summary, and queues read-only"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

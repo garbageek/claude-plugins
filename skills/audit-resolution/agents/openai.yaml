@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Resolution"
+  short_description: "Implement an audit fix and record resolution evidence"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code to PRD"
+  short_description: "Reverse-engineer implemented code into a product PRD"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

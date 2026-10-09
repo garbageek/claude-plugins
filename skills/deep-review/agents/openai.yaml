@@ -1,0 +1,5 @@
+interface:
+  display_name: "Deep Review"
+  short_description: "Trace code behavior and report evidence-backed findings"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

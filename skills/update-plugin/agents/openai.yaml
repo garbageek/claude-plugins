@@ -1,0 +1,5 @@
+interface:
+  display_name: "Update Plugin"
+  short_description: "Modify an existing Claude Code or Codex plugin"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

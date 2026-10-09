@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Verification"
+  short_description: "Independently verify fixes against original criteria"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"
