@@ -17,9 +17,24 @@ SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2025-03-26"}
 
 sys.dont_write_bytecode = True
 
-# Share installed-path resolution with the hook adapter; no second audit engine.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hooks"))
-from plugin_root import plugin_root, project_dir
+def plugin_root() -> Path:
+    """Resolve the installed plugin root from this MCP server."""
+    return Path(__file__).resolve().parents[1]
+
+
+def project_dir(payload: dict | None = None) -> Path:
+    payload = payload or {}
+    for key in ("AUDIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+        value = os.environ.get(key)
+        if value:
+            return Path(value).expanduser().resolve()
+    value = next((payload[k] for k in ("cwd", "project_dir", "projectDir")
+                  if isinstance(payload.get(k), str) and payload[k]), None)
+    current = Path(value).expanduser().resolve() if value else Path.cwd().resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / "audit").is_dir() or (candidate / ".git").exists():
+            return candidate
+    return current
 
 
 def requires_explicit_root() -> bool:

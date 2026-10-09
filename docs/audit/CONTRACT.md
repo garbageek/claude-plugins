@@ -1,6 +1,6 @@
 # Audit Ticket Workflow Contract
 
-This document defines the canonical behavioral contract shared by the audit-ticket skills, agents, CLI, hooks, and MCP server. All operational references must derive from this file instead of duplicating status tables or lifecycle rules.
+This document defines the canonical behavioral contract shared by the audit-ticket skills, agents, CLI, and MCP server. All operational references must derive from this file instead of duplicating status tables or lifecycle rules.
 
 ---
 
@@ -22,7 +22,7 @@ or contract: the plugin directory contains `scripts/audit.py` and
 `.claude-plugin/plugin.json`. Set `AUDIT_PLUGIN_ROOT` to that absolute directory
 and `AUDIT_PROJECT_DIR` to the absolute project being audited. Reuse host-provided
 paths only when they identify these same directories. Do not assume variables
-set for hook/MCP processes also exist in an ordinary agent shell, and do not use
+set for the host-managed MCP process also exist in an ordinary agent shell, and do not use
 the plugin cache or the shell's incidental working directory as the project.
 
 For a skill under `skills/<name>/SKILL.md`, the plugin root is two directories
@@ -41,13 +41,12 @@ wrapper.
 
 ### Host integration
 
-- Claude uses `.mcp.json`, `hooks/hooks.json`, the shared skills, and `agents/`.
+- Claude uses `.mcp.json`, the shared skills, and `agents/`.
   Both host MCP configurations require an explicit absolute `root`; neither
   relies on the installed directory or a process working directory as a project.
-- Codex uses `.codex-plugin/plugin.json`, which selects the same `skills/`,
-  `mcp/codex.json`, and `hooks/codex.json`. This native manifest avoids the current
-  portable AgentPlugin loader's hook-skipping branch. The absence of a root
-  `plugin.json` is deliberate and checked by the repository validator.
+- Codex uses `.codex-plugin/plugin.json`, which selects the same `skills/`
+  and `mcp/codex.json`. No bundled lifecycle hooks are registered.
+  The existing native manifest format remains in use.
 - Init/status/next are shared skills, not duplicate platform command files.
   `audit-status` and `audit-next` remain read-only when no audit tree exists.
   `audit_init` and `audit_create` retain their explicit initialization behavior.
@@ -56,22 +55,15 @@ wrapper.
   fix revision, original acceptance criteria and available evidence. If fresh
   delegation is unavailable, hand off to a separate session/reviewer; a resolver
   cannot establish independence merely by changing role labels.
-- Check actual hook discovery and trust in the installed host as described in
-  [the operator guide](README.md#codex-hook-activation). When loaded, `PreToolUse`
-  guards covered writes, `PostToolUse` diagnoses affected records, `SessionStart`
-  reports existing audit state, and `Stop` emits an advisory health warning.
 
-Role arguments enforce the transition matrix in the runtime; they are not
-agent-identity authentication. Tool hooks are additional guardrails for covered
-tool calls, not a filesystem sandbox. Do not claim that a skill enforces a
-Claude model/tool allowlist in Codex or that hooks intercept every possible
-external write.
+Role arguments enforce transitions for operations submitted to MCP/CLI; they
+are not agent-identity authentication. Direct Markdown edits bypass these checks
+and must be diagnosed explicitly. Skills do not enforce host-level tool allowlists
+in Codex.
 
 Platform references: [OpenAI packaging](https://developers.openai.com/plugins/build/plugins),
-[Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents),
-[portable MCP launch rules](https://agent-plugins.org/specification#stdio),
-and [Claude hooks](https://code.claude.com/docs/en/hooks).
+and [portable MCP launch rules](https://agent-plugins.org/specification#stdio).
 
 ---
 
@@ -133,7 +125,7 @@ A transition must satisfy both the current-state transition table and actor owne
 | `WONTFIX` | `OPEN` |
 | `INVALID` | `OPEN` |
 
-The canonical runtime must expose this exact matrix. Changes to statuses, actors, transitions, or filename parsing are made once in `scripts/audit.py`; hooks and MCP invoke that runtime instead of maintaining mirrored lifecycle implementations.
+The canonical runtime must expose this exact matrix. Changes to statuses, actors, transitions, or filename parsing are made once in `scripts/audit.py`; MCP invokes that runtime instead of maintaining mirrored lifecycle implementations.
 
 ---
 

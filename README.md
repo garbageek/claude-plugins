@@ -16,7 +16,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 
 | Workflow | Skills | Requirements |
 |---|---|---|
-| Audit and review | `deep-review`, `feature-scattering`, `audit-init`, `audit-status`, `audit-next`, `audit-discovery`, `audit-triage`, `audit-resolution`, `audit-verification` | Python for local audit/MCP/hooks and scanning; Git history optional |
+| Audit and review | `deep-review`, `feature-scattering`, `audit-init`, `audit-status`, `audit-next`, `audit-discovery`, `audit-triage`, `audit-resolution`, `audit-verification` | Python for local audit/MCP and scanning; Git history optional |
 | Architecture and recovery | `architect`, `recover` | Source/requirements for the requested scope |
 | Prompts | `design-prompts` | Model/tool contract when target-specific |
 | Human procedures | `human-execution-runbook` | Actual operational inputs and execution evidence |
@@ -30,8 +30,8 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 
 Python 3.10+ is required for the bundled runtime and helpers. Other skills do not
 require Python merely to read their instructions. No new agent framework or
-mandatory session-start methodology is installed. Audit hooks only act on the
-selected project's audit records; unrelated work stays outside that lifecycle.
+mandatory session-start methodology is installed. No lifecycle hooks are bundled;
+audit transitions through MCP/CLI are checked by the canonical runtime.
 
 For plugin installation and installed-copy updates, use
 `/artur-plugins:install-agent-plugins` in Claude Code or `$install-agent-plugins`
@@ -49,16 +49,13 @@ from the checkout/archive before installation.
 ## Package and host boundaries
 
 Both marketplaces contain **one entry pointing to this repository root**. Claude
-uses `.claude-plugin/plugin.json`. Codex uses `.codex-plugin/plugin.json`, which
-explicitly selects the shared skills, its MCP config, and `hooks/codex.json`.
-There is intentionally no portable root `plugin.json`: the inspected Codex
-AgentPlugin loader skips hook sources for that format. The supported native
-Codex format takes the hook-loading path instead. This is a compatibility choice
-for this toolkit, not a universal rule against portable plugins.
+uses `.claude-plugin/plugin.json`. Codex uses `.codex-plugin/plugin.json` to
+select the shared skills and MCP config. Neither host registers bundled hooks.
+The existing native Codex manifest is retained for explicit component selection;
+there is no portable root `plugin.json`.
 
-After installation, inspect and trust the hooks in the target host and confirm
-an actual deny/allow round trip. Package validation and direct helper execution
-do not prove installed-host behavior. See [audit activation](docs/audit/README.md#codex-hook-activation).
+Check installed MCP behavior in the target host. Package validation and direct
+helper execution do not prove installed-host behavior.
 
 ---
 
@@ -178,7 +175,7 @@ Normal lifecycle flows remain:
 ```
 
 The canonical Python CLI fallback requires the actual installed plugin path
-and the target project path; Claude hook substitutions are not guaranteed in a
+and the target project path; host-specific path substitutions are not guaranteed in a
 normal Bash session:
 
 ```bash
@@ -340,7 +337,7 @@ previously installed standalone products. Inspect `/plugin` -> **Installed** (or
 `claude plugin list`), then disable/remove the previous standalone entries from
 this repository at their actual installation scopes. Do not remove the marketplace.
 Keeping the old audit plugin active alongside this one can register duplicate MCP
-servers and hooks. Check for account-synced copies and manually configured hooks too.
+servers and legacy hooks. Check for account-synced copies and manually configured hooks too.
 
 Install `artur-plugins@artur-plugins`, then `/reload-plugins` or start a new session.
 Use `/artur-plugins:<skill>`; `init`/`review` are now `init-repo-instructions` and
@@ -348,7 +345,7 @@ Use `/artur-plugins:<skill>`; `init`/`review` are now `init-repo-instructions` a
 not duplicate command files. Keep the project's `audit/` state and existing
 handover files; consolidation does not require a data migration.
 
-Remove only obsolete manual hook entries after confirming the new hooks work.
+Remove obsolete manually configured audit hooks only when authorized.
 Never overwrite an entire user/project hook file or delete unrelated handlers.
 
 ## 1.7 Remove
@@ -443,11 +440,11 @@ The skills can load as plugin content, but its practical repository-analysis wor
 
 ### Audit and review
 
-The audit subsystem contains shared skills, Claude role agents, hooks, a local stdio MCP server, and a Python runtime:
+The audit subsystem contains shared skills, Claude role agents, a local stdio MCP server, and a Python runtime:
 
-- **Claude Code:** full intended target; skills, role agents, hooks, MCP tools, and Python runtime are packaged together.
-- **Claude Chat:** skill content can load, while agents, hooks, and the local MCP runtime do not provide the same lifecycle runtime.
-- **Cowork:** agents, hooks, and a local MCP server can load when the session runs on your computer, but this repository does not claim the `audit-workflow` Cowork runtime as verified; `python3` is required there.
+- **Claude Code:** skills, role agents, MCP tools, and Python runtime are packaged together.
+- **Claude Chat:** skill content can load, while role agents and the local MCP runtime do not provide the same lifecycle runtime.
+- **Cowork:** agents and a local MCP server can load when the session runs on your computer, but this repository does not claim the `audit-workflow` Cowork runtime as verified; `python3` is required there.
 
 The plugin deliberately has no top-level `bin/` directory because Claude Chat/Cowork installation rejects plugins that contain one.
 
@@ -462,8 +459,7 @@ The native repository marketplace is:
 ```
 
 It exposes the same single toolkit and shared skills. Codex selects its native
-manifest, shared MCP runtime, and hook definitions. Protected audit lifecycle
-behavior still requires registered, trusted hooks verified in the installed host.
+manifest and shared MCP runtime. No lifecycle hooks are bundled.
 
 ## 3.1 Install from GitHub
 
@@ -529,10 +525,9 @@ Start a new chat or CLI session before first use so bundled skills and plugin co
 
 ### Audit Workflow in Codex
 
-The native Codex manifest explicitly selects `hooks/codex.json` and
-`mcp/codex.json`. Inspect `/hooks`, review/trust the definitions, and verify a
-real blocked status edit plus an allowed evidence edit before relying on audit
-guardrails. See [audit activation](docs/audit/README.md#codex-hook-activation).
+The native Codex manifest selects `mcp/codex.json` and registers no hooks.
+Audit lifecycle operations through MCP/CLI use runtime checks. Direct Markdown
+edits are not intercepted; use `audit_doctor` to diagnose existing state.
 
 Use `$audit-init`, `$audit-status`, `$audit-next`, and the role/review skills in
 the catalog. Status/queue inspection does not initialize state. Pass an absolute
@@ -572,8 +567,7 @@ codex plugin list --marketplace artur-plugins --available --json
 
 Use `/plugins` or `codex plugin list` to identify earlier standalone packages from
 this repository. Disable/remove them separately before relying on this toolkit's
-MCP and hooks. Also remove only obsolete manual audit-hook registrations after
-confirming the new plugin handlers work. Preserve unrelated configuration and
+MCP server. Remove separately configured legacy audit hooks only when authorized. Preserve unrelated configuration and
 project `audit/` data.
 
 Refresh the marketplace and install the unified package:
@@ -585,8 +579,8 @@ codex plugin add artur-plugins@artur-plugins
 
 If an existing unified installation still serves stale cached content, inspect the
 installed source/version and reinstall through `/plugins` or remove/add the same
-package. Restart the session and review any changed hook trust definitions. A
-marketplace refresh and installed-package refresh are not the same evidence.
+package. Restart the session; a marketplace refresh and installed-package refresh
+are not the same evidence.
 
 ## 3.4 Remove
 
@@ -692,7 +686,7 @@ and use the supported reinstall/reload flow. `codex plugin marketplace upgrade`
 refreshes Git marketplaces, not this local directory source. Preserve the selected
 source, enablement and relevant setup across a reinstall. Do not edit host cache
 files by hand or use sparse checkout for this root plugin that omits its shared
-skills, hooks, MCP, references or scripts.
+skills, MCP, references or scripts.
 
 ## 4.3 Repo-local Codex enablement
 
@@ -716,15 +710,12 @@ source is `./`. Claude uses its own catalog format; Codex uses its native catalo
 format. Neither points at a nested product or duplicates the skills/runtime.
 
 `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` carry synchronized
-identity, version, and description. Codex's manifest selects `./skills/`,
-`./hooks/codex.json`, and `./mcp/codex.json`. Claude uses the default `skills/`,
-`agents/`, `hooks/hooks.json`, and `.mcp.json` locations.
+identity, version, and description. Codex selects `./skills/` and
+`./mcp/codex.json`; Claude uses the default `skills/`, `agents/`, and
+`.mcp.json` locations. Neither host has bundled hook definitions.
 
-The native Codex manifest is deliberate, not a redundant overlay: without a root
-portable `plugin.json`, Codex selects its legacy/native hook-capable loading path.
-Adding a portable root would change that selected format and may disable hooks in
-the inspected loader. New unrelated plugins may still use portable manifests;
-choose their format from the target client's actual capabilities.
+The native Codex manifest remains the chosen format for this toolkit's explicit
+skills/MCP paths. New unrelated plugins may use other supported manifest formats.
 
 Sources: [OpenAI packaging](https://developers.openai.com/plugins/build/plugins),
 [Codex loader](https://github.com/openai/codex/blob/main/codex-rs/core-plugins/src/loader.rs),
@@ -747,7 +738,6 @@ claude-plugins/
 ├── mcp/
 │   ├── codex.json           # Codex -> same audit server
 │   └── audit_mcp_server.py
-├── hooks/                   # two declarations, one guard
 ├── scripts/                 # audit runtime, scanner, validator
 ├── skills/                  # shared independent skill entry points
 ├── agents/                  # Claude audit role agents
@@ -770,8 +760,8 @@ checkout; generated project state belongs to the selected external workspace.
 - Requires `python3`; the local integrations target macOS/Linux Claude Code and Codex.
 - `feature-scattering` helper requires Python 3.10+.
 - Native Windows is not claimed as a supported full-runtime target by this repository version.
-- Cowork runtime behavior for Python hooks and the local stdio MCP server is not claimed as verified.
-- Included in the unified toolkit for both hosts. Codex uses a native hook-capable manifest; local Python, explicit project roots, hook trust, and installed-host verification are still required. See [activation](docs/audit/README.md#codex-hook-activation).
+- Cowork runtime behavior for the local stdio MCP server is not claimed as verified.
+- Included in the unified toolkit for both hosts. Codex uses the native manifest; local Python, explicit project roots, and installed-host MCP verification are still required.
 - `deep-review` and `feature-scattering` are read-only by default and do not replace the canonical audit lifecycle/runtime.
 
 ## Architecture and recovery
@@ -876,7 +866,7 @@ Local validation from the repository root:
 ```bash
 python3 -m pip install PyYAML==6.0.3
 python3 scripts/validate_plugins.py
-python3 -m compileall -q scripts hooks mcp skills
+python3 -m compileall -q scripts mcp skills
 # When Claude Code is installed:
 claude plugin validate --strict .
 ```

@@ -393,10 +393,9 @@ is not an installation or a runtime result. Confirm only states actually observe
   been observed to skip hook sources; check the actual target version. Never trust
   or install duplicate global hooks silently. If registration is missing, diagnose
   the chosen loader before proposing an explicit, user-authorized fallback.
-- For this toolkit's audit lifecycle, follow
-  [audit hook activation](../../docs/audit/README.md#codex-hook-activation). Check
-  deny/allow behavior in an isolated target before claiming guarded writes; do not
-  alter a real ticket to verify installation. Report unavailable host checks.
+- This toolkit has no bundled hooks. Its audit lifecycle validates MCP/CLI
+  operations, not direct Markdown edits. Confirm MCP availability in the installed
+  host before claiming operational support.
 - When moving from the old split marketplace to this unified toolkit, retain the
   shared marketplace and project audit data. Inspect installed names first; remove
   or disable only the superseded copies the user authorizes to avoid duplicate

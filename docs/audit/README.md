@@ -5,7 +5,6 @@ Evidence-first governed audit workflow for local Claude Code and Codex, using on
 ```text
 skills/      role procedures, init/status/next, and read-only investigation
 agents/      Claude role-isolated subagents
-hooks/       Claude/Codex configurations and one shared guard
 mcp/         structured audit tools
 scripts/     canonical audit runtime plus read-only scattering scanner
 ```
@@ -28,9 +27,7 @@ codex plugin add artur-plugins@artur-plugins
 ```
 
 For an unpacked local checkout, use its absolute path instead of
-`garbageek/claude-plugins`. Codex plugin installation does not guarantee that
-bundled hooks are registered: follow the procedure below before relying on
-audit lifecycle guardrails.
+`garbageek/claude-plugins`. The plugin does not register lifecycle hooks.
 
 Invoke the shared skills as `$deep-review`, `$feature-scattering`,
 `$audit-discovery`, `$audit-triage`, `$audit-resolution`, or `$audit-verification`.
@@ -43,31 +40,7 @@ Verification runs in a fresh native Codex subagent or another independent
 session, not by changing the resolver's role label. No custom Codex agents,
 user settings, or project instruction files are installed automatically.
 
-### Codex hook activation
-
-The toolkit uses `.codex-plugin/plugin.json` with explicit `hooks` and `mcpServers`
-paths. There is no portable root manifest. This selects the native Codex path
-that calls `load_plugin_hooks`, avoiding the AgentPlugin branch which currently
-returns no hook sources. The handlers still run the same Python guard as Claude.
-See the [loader](https://github.com/openai/codex/blob/main/codex-rs/core-plugins/src/loader.rs)
-and [supported packaging](https://developers.openai.com/plugins/build/plugins).
-
-After installing, open `/hooks` and confirm the toolkit's `PreToolUse` and
-`PostToolUse` definitions are present. Review and trust them, then observe a
-blocked direct status edit and an allowed evidence edit in a disposable project.
-Verify post-tool diagnosis too. Re-check trust and the installed package after updates.
-Do not register a second copy through project/user hooks when the plugin hooks run.
-
-If the installed client still does not expose or invoke these handlers, report
-that concrete host gap. Do not claim lifecycle protection from a manifest or
-successful Python execution alone. A deliberate fallback may merge the existing
-`hooks/codex.json` event groups into the host's supported project/user hooks,
-replacing `${PLUGIN_ROOT}` with the actual installed absolute path and preserving
-all unrelated handlers; do that only as requested setup, then verify it. Remove
-only obsolete fallback handlers after native plugin loading is confirmed.
-
-Hooks cover the recognized tool calls, not every external filesystem mutation.
-The canonical `audit.py` remains the owner of lifecycle transitions and evidence gates.
+Lifecycle transitions through MCP/CLI are validated by `audit.py`. Direct Markdown edits are not intercepted, and `audit doctor` is not invoked automatically. Use `audit_doctor` or the CLI `doctor` command to inspect existing state.
 
 ## Review without creating audit state
 
@@ -129,28 +102,15 @@ state initializer.
 ## Lifecycle rules and enforcement boundary
 
 - audit state is initialized through MCP/CLI rather than invented by the model;
-- lifecycle status changes go through the guarded runtime;
+- lifecycle transitions submitted through MCP/CLI are checked by the runtime; direct Markdown edits are not intercepted;
 - `audit-resolution` may edit implementation code but stops at `READY_FOR_VERIFICATION`;
 - `audit-verification` owns independent verdicts and `PASS` requires explicit `ACn: pass` results;
-- hooks reject covered direct audit lifecycle rewrites through Claude Edit/Write, Codex apply_patch, and recognized shell mutation paths; they are not a filesystem sandbox;
 - dependency mutations update both `Depends On` and `Blocks` sides;
 - MCP covers the normal lifecycle including show, open, triage, and dependency add/remove.
 
 ## Platform scope
 
-The runtime requires `python3`; the local integration targets macOS/Linux Claude
-Code and Codex. Codex selects `mcp/codex.json` and `hooks/codex.json` through
-its native manifest; Claude uses `.mcp.json` and `hooks/hooks.json`. Verify hook
-registration and trust in each installed host. Both invoke the same Python guard.
-`Stop` reports health without starting another turn or changing audit state.
-
-A successful package check or direct Python/MCP run does not establish an
-installed Claude/Codex session's hook behavior or independent agent execution.
-Verify skill discovery, MCP launch, trusted hooks, and role handoff in the target
-host before relying on end-to-end parity. Skills can load on other surfaces,
-but local Python hooks and stdio MCP need a local execution environment; no
-hosted/Cowork or native Windows runtime parity is claimed. The PowerShell
-matcher does not by itself make the `python3` launcher Windows-portable.
+The runtime requires `python3`; the local integration targets macOS/Linux Claude Code and Codex. Codex selects `mcp/codex.json` through its native manifest; Claude uses `.mcp.json`. There are no bundled lifecycle hooks. Verify installed skill discovery, MCP launch, and independent role handoff in the target host; package validation alone does not prove runtime behavior. Hosted/Cowork and native Windows runtime parity remain unverified.
 
 ## Files
 

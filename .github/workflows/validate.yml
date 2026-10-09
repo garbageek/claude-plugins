@@ -19,4 +19,4 @@ jobs:
       - name: Validate the single Claude and Codex plugin
         run: python scripts/validate_plugins.py
       - name: Compile maintained Python files
-        run: python -m compileall -q scripts hooks mcp skills
+        run: python -m compileall -q scripts mcp skills

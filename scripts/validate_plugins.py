@@ -44,7 +44,7 @@ def validate_manifests():
     claude = read_json(ROOT / ".claude-plugin/plugin.json")
     codex = read_json(ROOT / ".codex-plugin/plugin.json")
     require(not (ROOT / "plugin.json").exists(),
-            "This toolkit uses the native Codex loader for hooks; a portable root changes that loading path")
+            "This toolkit uses the native Codex manifest for its shared skills and MCP configuration")
     require(not (ROOT / "plugins").exists(), "Remove obsolete nested plugin products")
     for key in ("name", "version", "description"):
         require(isinstance(claude.get(key), str) and claude[key], f"Missing Claude {key}")
@@ -52,7 +52,7 @@ def validate_manifests():
     name = claude["name"]
     require(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name), "Plugin name must be kebab-case")
     require(local_path(codex.get("skills")) == ROOT / "skills", "Codex must load the common skills")
-    require(local_path(codex.get("hooks")) == ROOT / "hooks/codex.json", "Incorrect Codex hook adapter")
+    require("hooks" not in codex, "The Codex manifest must not register bundled hooks")
     require(local_path(codex.get("mcpServers")) == ROOT / "mcp/codex.json", "Incorrect Codex MCP adapter")
     interface = codex.get("interface", {})
     require(interface.get("category") == "Developer Tools", "Missing/incorrect Codex category")
@@ -146,30 +146,8 @@ def validate_files():
     print("Package JSON/YAML and local Markdown links: valid")
 
 
-def validate_audit_adapters():
-    modes = {"SessionStart": "session-start", "PreToolUse": "pre-tool-use", "PostToolUse": "post-tool-use", "Stop": "stop"}
-    for host, relative, variable in (("Claude", "hooks/hooks.json", "CLAUDE_PLUGIN_ROOT"),
-                                     ("Codex", "hooks/codex.json", "PLUGIN_ROOT")):
-        hooks = read_json(ROOT / relative)["hooks"]
-        require(set(hooks) == set(modes), f"{host}: hook event coverage differs")
-        for event, groups in hooks.items():
-            require(isinstance(groups, list) and groups, f"{host}: missing {event} handler")
-            if event in {"PreToolUse", "PostToolUse"}:
-                matchers = [re.compile(group.get("matcher", ".*")) for group in groups]
-                covered = ("Bash", "Edit", "Write", "MultiEdit") + (("apply_patch",) if host == "Codex" else ())
-                require(all(any(m.search(tool) for m in matchers) for tool in covered), f"{host}: missing tool coverage")
-            for group in groups:
-                for handler in group["hooks"]:
-                    require(handler.get("type") == "command", f"{host}: expected command hook")
-                    script = f"${{{variable}}}/hooks/audit_guard.py"
-                    if host == "Claude":
-                        require(handler.get("command") == "python3" and handler.get("args") == [script, modes[event]],
-                                f"{host}: incorrect shared guard command")
-                    else:
-                        require(handler.get("command") == f'python3 "{script}" {modes[event]}' and "args" not in handler,
-                                f"{host}: incorrect shared guard command")
-                    if event in {"PostToolUse", "Stop"}:
-                        require(handler.get("timeout", 0) > 12, f"{host}: hook timeout below doctor timeout")
+def validate_audit_mcp():
+    require(not (ROOT / "hooks").exists(), "Bundled hooks must be removed")
     for relative in (".mcp.json", "mcp/codex.json"):
         servers = read_json(ROOT / relative)["mcpServers"]
         require(set(servers) == {"audit-workflow"}, f"{relative}: unexpected/missing audit server")
@@ -190,9 +168,9 @@ def validate_audit_adapters():
         if relative == "mcp/codex.json":
             require("AUDIT_PLUGIN_ROOT" not in env,
                     "Codex: do not use unexpanded PLUGIN_ROOT in native MCP env")
-    for relative in ("scripts/audit.py", "scripts/scatter_scan.py", "hooks/audit_guard.py", "hooks/plugin_root.py", "mcp/audit_mcp_server.py"):
+    for relative in ("scripts/audit.py", "scripts/scatter_scan.py", "mcp/audit_mcp_server.py"):
         local_path(relative)
-    print("Audit adapters: shared runtime and guard, explicit project roots (host execution not checked)")
+    print("Audit MCP: shared runtime and explicit project roots (host execution not checked)")
 
 
 def main():
@@ -200,7 +178,7 @@ def main():
     validate_marketplaces(name, codex)
     validate_skills(name)
     validate_files()
-    validate_audit_adapters()
+    validate_audit_mcp()
     print(f"{name}: package valid")
 
 

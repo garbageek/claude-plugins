@@ -132,4 +132,4 @@ Automation must consume this normalized model instead of independently re-parsin
 
 ## Runtime Diagnosis Reference
 
-`docs/audit/references/runtime-diagnosis-patterns.md` is a maintained operational reference for diagnosing runtime workflow failures. Keep it aligned with the CLI, hooks, and MCP behavior when those behavior surfaces change.
+`docs/audit/references/runtime-diagnosis-patterns.md` is a maintained operational reference for diagnosing runtime workflow failures. Keep it aligned with CLI and MCP behavior when those surfaces change.

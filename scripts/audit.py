@@ -39,9 +39,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
-# Canonical workflow model. Keep lifecycle constants and parsers here so CLI,
-# hooks, and MCP all execute one runtime implementation instead of mirrored
-# fallback copies.
+# Canonical workflow model. Keep lifecycle constants and parsers here so CLI
+# and MCP execute one runtime implementation instead of mirrored copies.
 VALID_CATEGORIES = {
     "BUG", "DEGRADED", "LOST", "TODO", "TEST", "CONFIG", "SECURITY", "CODE-QUALITY",
 }
