@@ -6,10 +6,11 @@ This document defines the canonical behavioral contract shared by the audit-tick
 
 ## 1. Canonical Runtime Invocation
 
-The structured `audit_*` MCP tools are the preferred machine interface in Claude
-Code and local Codex. Pass the absolute target project directory as `root` on
-every call. Initialize with `audit_init` only when ticket-lifecycle work is
-requested; `deep-review` and `feature-scattering` remain read-only by default.
+The bundled Python CLI is the default audit runtime in Claude Code and Codex.
+An `audit_*` MCP server is available only when registered separately by the
+operator; pass the absolute target project directory as `root` on each MCP call.
+Initialize audit state only when ticket-lifecycle work is requested;
+`deep-review` and `feature-scattering` remain read-only by default.
 
 The canonical implementation is `scripts/audit.py` inside the installed plugin.
 Do not assume an `audit` executable is on `PATH`, install a project-local copy,
@@ -17,12 +18,12 @@ or implement lifecycle transitions by editing Markdown.
 
 ### Resolve the installed plugin and the target project separately
 
-Before a CLI fallback, determine the actual installed path from this loaded skill
+Before using the CLI, determine the actual installed path from this loaded skill
 or contract: the plugin directory contains `scripts/audit.py` and
 `.claude-plugin/plugin.json`. Set `AUDIT_PLUGIN_ROOT` to that absolute directory
 and `AUDIT_PROJECT_DIR` to the absolute project being audited. Reuse host-provided
 paths only when they identify these same directories. Do not assume variables
-set for the host-managed MCP process also exist in an ordinary agent shell, and do not use
+for an optional MCP process also exist in an ordinary agent shell, and do not use
 the plugin cache or the shell's incidental working directory as the project.
 
 For a skill under `skills/<name>/SKILL.md`, the plugin root is two directories
@@ -41,12 +42,12 @@ wrapper.
 
 ### Host integration
 
-- Claude uses `.mcp.json`, the shared skills, and `agents/`.
-  Both host MCP configurations require an explicit absolute `root`; neither
-  relies on the installed directory or a process working directory as a project.
-- Codex uses `.codex-plugin/plugin.json`, which selects the same `skills/`
-  and `mcp/codex.json`. No bundled lifecycle hooks are registered.
-  The existing native manifest format remains in use.
+- Claude loads the shared `skills/` and `agents/`; no `.mcp.json` or hooks are
+  installed. Python CLI operations are invoked only for requested audit work.
+- Codex uses `.codex-plugin/plugin.json` to select the same `skills/`. No bundled
+  MCP server or lifecycle hooks are registered.
+- `mcp/audit_mcp_server.py` and `mcp/codex.json` remain available for manual
+  opt-in. MCP calls always require an explicit absolute project `root`.
 - Init/status/next are shared skills, not duplicate platform command files.
   `audit-status` and `audit-next` remain read-only when no audit tree exists.
   `audit_init` and `audit_create` retain their explicit initialization behavior.

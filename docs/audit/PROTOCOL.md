@@ -8,9 +8,9 @@ This document is the operational quick reference for using the audit workflow.
 
 ## Cold Start
 
-For requested ticket-lifecycle work, follow the [invocation contract](CONTRACT.md#1-canonical-runtime-invocation) and pass the absolute project `root` to every MCP tool. If the target project has no audit workflow yet, prefer `audit_init`, then `audit_doctor`. Read-only investigation does not initialize state.
+For requested ticket-lifecycle work, follow the [invocation contract](CONTRACT.md#1-canonical-runtime-invocation). Use the Python CLI with an explicit absolute project root; an MCP tool is an optional alternative only after separate registration. When no audit workspace exists, run `init`, then `doctor`. Read-only investigation does not initialize state.
 
-CLI fallback after resolving the paths in the invocation contract:
+CLI invocation after resolving the paths in the contract:
 
 ```bash
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
@@ -25,7 +25,7 @@ For MCP clients, `audit_create` may perform this initialization as an explicit c
 
 ## Required Command Surface
 
-Use the structured MCP tools for normal lifecycle work. The bundled CLI is the fallback surface:
+Use the bundled CLI for normal lifecycle work. Separately registered MCP tools can perform equivalent operations:
 
 ```bash
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" <command> [options]

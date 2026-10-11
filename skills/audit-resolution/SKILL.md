@@ -6,7 +6,7 @@ tags: [audit, resolution, fix, ticket, evidence]
 
 # Audit Resolution
 
-Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Prefer the structured `audit_*` MCP tools with an explicit absolute `root`. For CLI fallback, resolve `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there.
+Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Use the bundled Python CLI after resolving `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there. A separately configured `audit_*` MCP server is an optional equivalent with an explicit absolute `root`.
 
 Purpose: fix one unblocked audit ticket, record implementation evidence, and hand off to independent verification.
 
