@@ -174,6 +174,21 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" re
 - evidence/test record
 - passing result for every acceptance criterion (`AC1`, `AC2`, ...)
 
+Only the latest explicit result for each criterion in the active verification
+sections counts. A later `fail`, `partial`, `blocked`, or `regress` supersedes an
+earlier `pass`.
+
+A new resolution cycle, reopening to `OPEN`, or changing `Verified Commit`
+archives the previous criteria, checklist, verification evidence, test record,
+verdict, and verifier metadata under `## Verification History`. Archived proof
+does not satisfy current gates. A new resolution cycle also archives resolution
+evidence and current state; supply fresh resolution evidence and a test record.
+Reopening clears resolution metadata. Refreshing READY on the same Fix Commit
+keeps the active proof. Partial checks on the same Verified Commit can accumulate;
+checks without a recorded revision cannot be carried to a newly supplied revision.
+The runtime validates the prepared record before writing it, so a rejected
+transition leaves the verification file unchanged.
+
 Use:
 
 ```bash
@@ -220,6 +235,8 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" ve
 ## Test Verification
 
 ## Verdict
+
+## Verification History
 ```
 
 Backward compatibility: parsers may read legacy `**Status:**`, `**Date:**`, and `**Commit Verified At:**`, but new writes must use the canonical fields above.
@@ -267,6 +284,13 @@ Tickets also carry machine-readable fields:
 ```
 
 `audit_next(for_role="resolution")` or the CLI equivalent consumes this metadata plus dependency edges.
+
+Nonempty ticket header values take precedence over the latest `triage-*.md`
+report in exports and scheduling. The report is a compatibility fallback for
+missing legacy values only. Apply triage decisions through `triage set`; a stale
+report cannot override the updated ticket. `Decision` defaults to `FIX` only when
+neither source supplies a value. `triage set` inserts supplied fields when a
+legacy ticket lacks them.
 
 ---
 

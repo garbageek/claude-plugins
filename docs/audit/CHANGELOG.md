@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Use the latest criterion result for PASS and archive stale proof when a new resolution cycle starts, a ticket reopens, or the verified revision changes. Preserve partial checks on the same revision and idempotent READY refreshes.
+- Prefer canonical ticket triage fields over older report rows, retaining report fallback for missing legacy values. Insert supplied triage fields when updating legacy tickets.
+- Choose discovery mode before initialization; Investigate remains read-only in the shared skill and Claude agent.
+
 ## 1.4.1
 
 - Block full Claude `Write` of managed audit records; inspect actual `Edit`/`MultiEdit` substitutions for changes to protected Status fields, regardless of status value, without blocking evidence text.

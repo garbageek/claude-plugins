@@ -546,12 +546,40 @@ def _criterion_result(raw: str) -> tuple[str, str] | None:
 
 def _criteria_result_ids(text: str) -> set[str]:
     content = _section_content(text, "## Criteria Results") or _section_content(text, "## Verification Checklist")
-    ids: set[str] = set()
+    results: dict[str, str] = {}
     for line in content.splitlines():
         parsed = _criterion_result(line)
-        if parsed and parsed[1] == "pass":
-            ids.add(parsed[0])
-    return ids
+        if parsed:
+            results[parsed[0]] = parsed[1]
+    return {cid for cid, result in results.items() if result == "pass"}
+
+
+def _archive_verification(text: str, *, include_resolution: bool) -> str:
+    """Retain previous proof as history, outside the active evidence sections."""
+    sections = ["Criteria Results", "Verification Checklist", "Evidence", "Test Verification", "Verdict"]
+    if include_resolution:
+        sections = ["Resolution Evidence", "Current State", *sections]
+    fields = ["Verified Date", "Verified By", "Verified Commit", "Date", "Commit Verified At"]
+    if any(_has_nonplaceholder_content(text, f"## {section}") for section in sections) or any(
+        _field(text, label) for label in fields
+    ):
+        snapshot = [f"### Archived at {datetime.now().isoformat(timespec='seconds')}"]
+        for label in ["Verification Status", "Status", "Resolved Date", "Resolved By", "Fix Commit", *fields]:
+            value = _field(text, label)
+            if value:
+                snapshot.append(f"**{label}:** `{value}`")
+        for section in sections:
+            content = _section_content(text, f"## {section}")
+            if content:
+                # Archived headings must not be parsed as active ## sections.
+                content = re.sub(r"^(#{2,})[ \t]", r"#\1 ", content, flags=re.MULTILINE)
+                snapshot.append(f"#### {section}\n\n{content}")
+        text = _append_to_section(text, "## Verification History", "\n\n".join(snapshot))
+    for section in sections:
+        text = _replace_section(text, f"## {section}", "")
+    for label in fields:
+        text = _replace_field(text, label, "")
+    return text
 
 
 def _history_header() -> str:
@@ -708,12 +736,12 @@ def load_records() -> list[dict[str, Any]]:
             "verification_evidence": v.get("evidence", ""),
             "depends_on": depends_on,
             "blocks": t["blocks"],
-            "impact": meta.get("impact") or t["impact"],
-            "effort": meta.get("effort") or t["effort"],
-            "priority": meta.get("priority") or t["priority"],
-            "p_level": meta.get("p_level") or t["p_level"],
-            "decision": meta.get("decision") or t["decision"],
-            "phase": meta.get("phase") or t["phase"],
+            "impact": t["impact"] or meta.get("impact", ""),
+            "effort": t["effort"] or meta.get("effort", ""),
+            "priority": t["priority"] or meta.get("priority", ""),
+            "p_level": t["p_level"] or meta.get("p_level", ""),
+            "decision": (_field(t["_text"], "Decision") or meta.get("decision") or "FIX").upper(),
+            "phase": t["phase"] or meta.get("phase", ""),
             "ticket_hash": _hash_file(path),
             "verification_hash": _hash_file(Path(v["path"])) if v.get("path") else "",
         }
@@ -1000,6 +1028,7 @@ def _verification_text(num: int, category: str, severity: str, slug: str, status
         f"## Evidence\n\n"
         f"## Test Verification\n\n"
         f"## Verdict\n\n"
+        f"## Verification History\n\n"
     )
 
 
@@ -1257,6 +1286,19 @@ def _apply_transition_to_file(
     try:
         _require_actor(actor, target_status)
         _validate_transition(current, target_status)
+        new_resolution = target_status == "READY_FOR_VERIFICATION" and (
+            current != target_status or bool(fix_commit and fix_commit != _field(text, "Fix Commit"))
+        )
+        reopened = target_status == "OPEN" and current != "OPEN"
+        previous_revision = _field(text, "Verified Commit") or _field(text, "Commit Verified At")
+        new_revision = target_status in VERIFICATION_STATUSES and bool(
+            verified_commit and verified_commit != previous_revision
+        )
+        if new_resolution or reopened or new_revision:
+            text = _archive_verification(text, include_resolution=new_resolution or reopened)
+        if reopened:
+            for label in ("Fix Commit", "Resolved Date", "Resolved By"):
+                text = _replace_field(text, label, "")
         _validate_transition_requirements(
             target_status,
             ticket_path,
@@ -1295,7 +1337,7 @@ def _apply_transition_to_file(
             new = _replace_field(new, "Date", today)
             new = _replace_field(new, "Verified By", actor)
         if verified_commit:
-            new = _replace_field(new, "Verified Commit", verified_commit)
+            new = _ensure_field_after(new, "Fix Commit", "Verified Commit", verified_commit)
             if re.search(r"^\*\*Commit Verified At:\*\*", new, flags=re.MULTILINE):
                 new = _replace_field(new, "Commit Verified At", verified_commit)
         if evidence:
@@ -1915,20 +1957,20 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
         raise AuditError(f"ticket {num:03d} not found", 1)
     text = path.read_text(encoding="utf-8", errors="replace")
     if args.impact is not None:
-        text = _replace_field(text, "Impact", str(args.impact))
+        text = _ensure_field_after(text, "Blocks", "Impact", str(args.impact))
     if args.effort is not None:
-        text = _replace_field(text, "Effort", str(args.effort))
+        text = _ensure_field_after(text, "Impact", "Effort", str(args.effort))
     if args.impact is not None and args.effort is not None:
         priority = args.impact * (6 - args.effort)
-        text = _replace_field(text, "Priority", str(priority))
+        text = _ensure_field_after(text, "Effort", "Priority", str(priority))
         plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
-        text = _replace_field(text, "P-level", plevel)
+        text = _ensure_field_after(text, "Priority", "P-level", plevel)
     if args.p_level:
-        text = _replace_field(text, "P-level", args.p_level.upper())
+        text = _ensure_field_after(text, "Priority", "P-level", args.p_level.upper())
     if args.decision:
-        text = _replace_field(text, "Decision", args.decision.upper())
+        text = _ensure_field_after(text, "P-level", "Decision", args.decision.upper())
     if args.phase:
-        text = _replace_field(text, "Phase", args.phase)
+        text = _ensure_field_after(text, "Decision", "Phase", args.phase)
     path.write_text(text, encoding="utf-8")
     print(f"{num:03d}: triage metadata updated ({_rel(path)})")
 

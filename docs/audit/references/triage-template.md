@@ -2,6 +2,10 @@
 
 Write to `audit/triage/triage-{date}.md`.
 
+Nonempty ticket header fields take precedence over the report in canonical
+exports and scheduling. The latest report supplies missing legacy values only;
+it cannot override metadata applied by `triage set`.
+
 ```markdown
 # Audit Triage
 
