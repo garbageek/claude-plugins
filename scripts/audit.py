@@ -20,7 +20,7 @@ Common commands:
     export [--json]
     baseline create|compare [--tag TAG]
 
-Run from the project root directory, or pass --root /path/to/project. In the plugin, MCP tools are preferred; the direct fallback uses an observed installed path and explicit project root: `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project ...`.
+Run from the project root directory, or pass --root /path/to/project. The plugin uses the bundled CLI directly with an explicit project root: `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project ...`. The optional MCP server requires manual registration.
 """
 
 from __future__ import annotations
@@ -291,8 +291,8 @@ DRAFT -> OPEN -> READY_FOR_VERIFICATION -> PASS/PARTIAL/FAIL/REGRESS/BLOCKED/WON
 
 ## First commands
 
-Prefer the plugin MCP tools (`audit_doctor`, `audit_summary`, `audit_next`).
-For direct CLI fallback, run `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project <command> ...`.
+Run `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project <command> ...`.
+The equivalent MCP tools (`audit_doctor`, `audit_summary`, `audit_next`) are available only if the optional server is explicitly registered.
 
 ## Roles
 
@@ -302,7 +302,7 @@ For direct CLI fallback, run `python3 /path/to/artur-plugins/scripts/audit.py --
 
 ## Source of truth
 
-Use the `audit_export` MCP tool for automation, or `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project export --json` as fallback. Markdown files are human-readable records, but lifecycle state changes should go through MCP or the bundled CLI runtime.
+Use `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project export --json` for automation. An explicitly registered MCP server also offers `audit_export`. Markdown files are human-readable records; lifecycle changes should go through the bundled CLI or its MCP wrapper.
 """
 
 
@@ -311,7 +311,7 @@ def _triage_readme_text() -> str:
 
 Triage metadata is executable: `audit_next(for_role="resolution")` or CLI `next --for resolution` consumes priority and dependency data.
 
-Use MCP `audit_triage_set` and `audit_dependency_add`, or the corresponding CLI fallback commands.
+Use `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project triage set ...` and `deps add ...`. If MCP is explicitly registered, `audit_triage_set` and `audit_dependency_add` are also available.
 
 Dependency semantics: `003 blocks 001`, so ticket 001 waits until ticket 003 is resolved.
 """
@@ -329,7 +329,7 @@ Canonical dependency syntax:
 
 Meaning: ticket 001 depends on ticket 003.
 
-Use MCP `audit_dependency_add`, or CLI `deps add 001 --depends-on 003`.
+Use CLI `deps add 001 --depends-on 003`, or `audit_dependency_add` if MCP is explicitly registered.
 """
 
 
@@ -468,7 +468,7 @@ def _ensure_field_after(text: str, after_label: str, label: str, value: str) -> 
 
 
 def _section_content(text: str, section: str) -> str:
-    m = re.search(rf"^{re.escape(section)}\s*$", text, flags=re.MULTILINE)
+    m = re.search(rf"^{re.escape(section)}[ \t]*$", text, flags=re.MULTILINE)
     if not m:
         return ""
     start = m.end()
@@ -478,7 +478,7 @@ def _section_content(text: str, section: str) -> str:
 
 
 def _replace_section(text: str, section: str, body: str) -> str:
-    header_re = rf"^{re.escape(section)}\s*$"
+    header_re = rf"^{re.escape(section)}[ \t]*$"
     m = re.search(header_re, text, flags=re.MULTILINE)
     body = body.strip()
     if not m:
@@ -532,7 +532,7 @@ def _acceptance_criteria(ticket_text: str) -> dict[str, str]:
 
 
 _CRITERION_RESULT_RE = re.compile(
-    r"^\s*(?:-\s*\[[ xX]\]\s*)?(AC\d+)\s*[:.-]\s*(pass|fail|partial|blocked|regress)\b",
+    r"^\s*(?:-\s*(?:\[[ xX]\]\s*)?)?(AC\d+)\s*[:.-]\s*(pass|fail|partial|blocked|regress)\b",
     re.IGNORECASE,
 )
 
@@ -545,13 +545,47 @@ def _criterion_result(raw: str) -> tuple[str, str] | None:
 
 
 def _criteria_result_ids(text: str) -> set[str]:
-    content = _section_content(text, "## Criteria Results") or _section_content(text, "## Verification Checklist")
-    results: dict[str, str] = {}
-    for line in content.splitlines():
-        parsed = _criterion_result(line)
+    # Later entries within one section supersede earlier entries. Separate
+    # sections have no shared timestamps: conflicting active results cannot PASS.
+    states: dict[str, set[str]] = {}
+    for section in ("## Criteria Results", "## Verification Checklist"):
+        latest: dict[str, str] = {}
+        for line in _section_content(text, section).splitlines():
+            parsed = _criterion_result(line)
+            if parsed:
+                latest[parsed[0]] = parsed[1]
+        for cid, result in latest.items():
+            states.setdefault(cid, set()).add(result)
+    return {cid for cid, results in states.items() if results == {"pass"}}
+
+
+def _append_criterion_results(text: str, criteria: Sequence[str]) -> str:
+    lines: list[str] = []
+    updated_ids: set[str] = set()
+    for raw in criteria:
+        raw = raw.strip()
+        if not raw:
+            continue
+        parsed = _criterion_result(raw)
         if parsed:
-            results[parsed[0]] = parsed[1]
-    return {cid for cid, result in results.items() if result == "pass"}
+            updated_ids.add(parsed[0])
+        lines.append(f"- [{'x' if parsed and parsed[1] == 'pass' else ' '}] {raw}")
+    if not lines:
+        return text
+
+    # Preserve superseded checklist proof before the fresh CLI result. Leaving
+    # contradictory copies active would make a valid new PASS fail doctor.
+    checklist = _section_content(text, "## Verification Checklist")
+    if checklist and updated_ids:
+        kept: list[str] = []
+        superseded: list[str] = []
+        for line in checklist.splitlines():
+            parsed = _criterion_result(line)
+            (superseded if parsed and parsed[0] in updated_ids else kept).append(line)
+        if superseded:
+            text = _append_to_section(text, "## Criteria Results", "\n".join(superseded))
+            text = _replace_section(text, "## Verification Checklist", "\n".join(kept))
+    return _append_to_section(text, "## Criteria Results", "\n".join(lines))
 
 
 def _archive_verification(text: str, *, include_resolution: bool) -> str:
@@ -844,8 +878,11 @@ def _pass_ready(ticket_path: Path, verif_text: str, criteria_args: Sequence[str]
         missing.append("verification evidence is empty")
     if not _has_nonplaceholder_content(verif_text, "## Test Verification"):
         missing.append("test verification is empty")
+    verdict = _section_content(verif_text, "## Verdict")
     if not _has_nonplaceholder_content(verif_text, "## Verdict"):
         missing.append("verdict is empty")
+    elif (label := re.match(r"^\*\*(\w+)\*\*", verdict)) and label.group(1).upper() != "PASS":
+        missing.append(f"verdict status is {label.group(1)}, not PASS")
     return not missing, missing
 
 
@@ -1290,11 +1327,12 @@ def _apply_transition_to_file(
             current != target_status or bool(fix_commit and fix_commit != _field(text, "Fix Commit"))
         )
         reopened = target_status == "OPEN" and current != "OPEN"
+        regressed = target_status == "REGRESS" and current == "PASS"
         previous_revision = _field(text, "Verified Commit") or _field(text, "Commit Verified At")
         new_revision = target_status in VERIFICATION_STATUSES and bool(
             verified_commit and verified_commit != previous_revision
         )
-        if new_resolution or reopened or new_revision:
+        if new_resolution or reopened or new_revision or regressed:
             text = _archive_verification(text, include_resolution=new_resolution or reopened)
         if reopened:
             for label in ("Fix Commit", "Resolved Date", "Resolved By"):
@@ -1343,16 +1381,7 @@ def _apply_transition_to_file(
         if evidence:
             new = _append_to_section(new, "## Evidence", "\n".join(f"- {x}" for x in evidence))
         if criteria:
-            lines = []
-            for raw in criteria:
-                raw = raw.strip()
-                if not raw:
-                    continue
-                parsed = _criterion_result(raw)
-                checked = bool(parsed and parsed[1] == "pass")
-                lines.append(f"- [{'x' if checked else ' '}] {raw}")
-            if lines:
-                new = _append_to_section(new, "## Criteria Results", "\n".join(lines))
+            new = _append_criterion_results(new, criteria)
         if test:
             new = _append_to_section(new, "## Test Verification", test)
         if reason and not verdict:
@@ -1560,6 +1589,8 @@ def cmd_next(args: argparse.Namespace) -> None:
             continue
         if args.severity and str(r.get("severity", "")).lower() != args.severity.lower():
             continue
+        if args.for_role == "resolution" and str(r.get("decision", "FIX")).upper() != "FIX":
+            continue
         blocked = _is_blocked(r, status_by_id)
         if blocked and args.for_role == "resolution":
             blocked_skipped += 1
@@ -1575,13 +1606,12 @@ def cmd_next(args: argparse.Namespace) -> None:
             print(f"No tickets available for {args.for_role}.{suffix}")
         return
 
-    def sort_key(r: dict[str, Any]) -> tuple[int, int, int, int, int]:
-        decision_penalty = 0 if r.get("decision", "FIX") == "FIX" else 1
+    def sort_key(r: dict[str, Any]) -> tuple[int, int, int, int]:
         plevel = _PLEVEL_ORDER.get(str(r.get("p_level", "")).upper(), 4)
         score = -_int_or_default(r.get("priority"), 0)
         sev = _SEVERITY_ORDER.get(str(r.get("severity", "?")).lower(), 4)
         num = _int_or_default(r.get("num"), 999999)
-        return (decision_penalty, plevel, score, sev, num)
+        return (plevel, score, sev, num)
 
     candidates.sort(key=sort_key)
     top = candidates[0]
@@ -1960,11 +1990,19 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
         text = _ensure_field_after(text, "Blocks", "Impact", str(args.impact))
     if args.effort is not None:
         text = _ensure_field_after(text, "Impact", "Effort", str(args.effort))
-    if args.impact is not None and args.effort is not None:
-        priority = args.impact * (6 - args.effort)
-        text = _ensure_field_after(text, "Effort", "Priority", str(priority))
-        plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
-        text = _ensure_field_after(text, "Priority", "P-level", plevel)
+    if args.impact is not None or args.effort is not None:
+        legacy = _load_triage_metadata().get(f"{num:03d}", {})
+        impact = _int_or_default(_field(text, "Impact") or legacy.get("impact"), 0)
+        effort = _int_or_default(_field(text, "Effort") or legacy.get("effort"), 0)
+        if 1 <= impact <= 5 and 1 <= effort <= 5:
+            # Materialize legacy fallback values so later report edits cannot
+            # silently change the inputs behind this calculated priority.
+            text = _ensure_field_after(text, "Blocks", "Impact", str(impact))
+            text = _ensure_field_after(text, "Impact", "Effort", str(effort))
+            priority = impact * (6 - effort)
+            text = _ensure_field_after(text, "Effort", "Priority", str(priority))
+            plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
+            text = _ensure_field_after(text, "Priority", "P-level", plevel)
     if args.p_level:
         text = _ensure_field_after(text, "Priority", "P-level", args.p_level.upper())
     if args.decision:
