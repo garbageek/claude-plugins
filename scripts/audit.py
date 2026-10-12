@@ -32,6 +32,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from graphlib import CycleError, TopologicalSorter
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -70,21 +72,57 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 CATEGORY_PATTERN = "|".join(sorted(map(re.escape, VALID_CATEGORIES), key=len, reverse=True))
 
+def _markdown_lines(text: str) -> Iterable[tuple[int, int, str, bool]]:
+    """Yield line offsets and whether a line is outside fenced code/comments."""
+    offset = 0
+    fence = ""
+    length = 0
+    in_comment = False
+    for line in text.splitlines(keepends=True):
+        active = not fence and not in_comment
+        marker = re.match(r"^[ \t]{0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+        if fence:
+            if marker and marker[1][0] == fence and len(marker[1]) >= length and not marker[2].strip():
+                fence = ""
+            active = False
+        elif in_comment:
+            if "-->" in line:
+                in_comment = False
+            active = False
+        elif marker:
+            fence, length = marker[1][0], len(marker[1])
+            active = False
+        elif "<!--" in line:
+            in_comment = "-->" not in line[line.index("<!--") + 4:]
+            # Inline comments do not hide visible text preceding them.
+            active = bool(line.split("<!--", 1)[0].strip())
+        yield offset, offset + len(line), line, active
+        offset += len(line)
+
+
 def _metadata_header(text: str) -> str:
-    # Canonical record fields precede the first level-two section. Evidence and
-    # fenced examples in the body must never supply missing lifecycle metadata.
-    return re.split(r"(?m)^##(?:\s|$)", text, maxsplit=1)[0]
+    for start, _, line, active in _markdown_lines(text):
+        if active and re.match(r"^##(?:[ \t\r\n]|$)", line):
+            return text[:start]
+    return text
+
+
+def _header_field_span(text: str, label: str) -> tuple[int, int, str, str] | None:
+    pattern = rf"^([ \t]*\*\*{re.escape(label)}:\*\*[ \t]*)([^\r\n]*)"
+    for begin, _, line, active in _markdown_lines(_metadata_header(text)):
+        if active and (match := re.match(pattern, line)):
+            return begin, begin + match.end(), match[1], match[2]
+    return None
 
 
 def _field(text: str, label: str) -> str:
-    header = _metadata_header(text)
-    pattern = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*[ \t]*([^\n]*)"
-    match = re.search(pattern, header)
-    if not match:
+    found = _header_field_span(text, label)
+    if found is None:
         return ""
-    value = match.group(1).strip()
+    value = found[3].strip()
     quoted = re.match(r"`([^`]*)`", value)
     return quoted.group(1).strip() if quoted else value
+
 
 def parse_ticket_filename(name: str) -> tuple[Optional[int], str, str]:
     num_match = re.match(r"^(\d+)", name)
@@ -155,6 +193,7 @@ TICKETS_DIR = ROOT / "audit" / "tickets"
 VERIF_DIR = ROOT / "audit" / "verification" / "details"
 TRIAGE_DIR = ROOT / "audit" / "triage"
 CREATE_LOCK = ROOT / "audit" / ".create.lock"
+_LOCK_DEPTH = 0
 
 _STUB_RE = re.compile(r"^\d+\.md$")
 _PLACEHOLDER_RE = re.compile(
@@ -191,8 +230,11 @@ class BatchResult:
     updated: list[ItemResult] = field(default_factory=list)
     failed: list[ItemResult] = field(default_factory=list)
     status: str = ""
+    commit_error: str = ""
 
     def exit_code(self) -> int:
+        if self.commit_error:
+            return 1
         if self.failed and self.updated:
             return 1
         if self.failed:
@@ -205,6 +247,7 @@ class BatchResult:
             "status": self.status,
             "updated": [r.__dict__ for r in self.updated],
             "failed": [r.__dict__ for r in self.failed],
+            **({"commit_error": self.commit_error} if self.commit_error else {}),
         }
 
 
@@ -226,10 +269,10 @@ def _ticket_num(name: str) -> Optional[int]:
 
 
 def _parse_id(raw: str) -> int:
-    try:
-        return int(raw)
-    except ValueError as exc:
-        raise AuditError(f"invalid ticket id: {raw}", 2) from exc
+    text = str(raw).strip()
+    if not re.fullmatch(r"[0-9]+", text) or int(text) < 1:
+        raise AuditError(f"invalid ticket id: {raw!r}; use a positive decimal ID", 2)
+    return int(text)
 
 
 def _canonical_ticket_id(raw: str) -> str:
@@ -249,7 +292,7 @@ def _split_ids(value: str) -> list[str]:
 
 
 def _join_ids(values: Iterable[str]) -> str:
-    cleaned = [str(v).strip().zfill(3) for v in values if str(v).strip()]
+    cleaned = sorted({_canonical_ticket_id(str(value)) for value in values}, key=int)
     return ", ".join(cleaned) if cleaned else "none"
 
 
@@ -353,36 +396,107 @@ def _initialize_audit_tree(write_docs: bool = True) -> dict[str, Any]:
 
 
 @contextmanager
-def _create_lock_cm():
-    CREATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
-    handle = None
+def _create_lock_cm(*, read_only: bool = False):
+    """Serialize local CLI access on POSIX and Windows; never silently skip a failed lock."""
+    global _LOCK_DEPTH
+    if _LOCK_DEPTH:
+        yield
+        return
+    if read_only and not CREATE_LOCK.exists():
+        yield
+        return
+    if not read_only:
+        CREATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    handle = CREATE_LOCK.open("rb" if read_only else "a+b")
     locked = False
     try:
-        handle = CREATE_LOCK.open("a+", encoding="utf-8")
         try:
-            import fcntl  # type: ignore
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                mode = fcntl.LOCK_SH if read_only else fcntl.LOCK_EX
+                fcntl.flock(handle.fileno(), mode | fcntl.LOCK_NB)
             locked = True
-        except BlockingIOError as exc:
-            raise AuditError(f"audit create/update lock is held: {CREATE_LOCK}", 1) from exc
-        except (ImportError, OSError):
-            pass
-        yield
+        except (OSError, ImportError) as exc:
+            raise AuditError(f"audit lock unavailable: {CREATE_LOCK}: {exc}", 1) from exc
+        _LOCK_DEPTH += 1
+        try:
+            yield
+        finally:
+            _LOCK_DEPTH -= 1
     finally:
-        if handle is not None:
-            if locked:
-                try:
-                    import fcntl  # type: ignore
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                except Exception:
-                    pass
-            handle.close()
+        if locked:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+def _write_documents(updates: dict[Path, str]) -> None:
+    """Stage complete files, then replace them; roll back earlier replacements on I/O failure."""
+    originals: dict[Path, bytes | None] = {}
+    staged: dict[Path, Path] = {}
+    replaced: list[Path] = []
+
+    def stage(path: Path, data: bytes) -> Path:
+        fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        temp = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temp.chmod(path.stat().st_mode & 0o777 if path.exists() else 0o644)
+            return temp
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
+
+    try:
+        for path, text in updates.items():
+            old = path.read_bytes() if path.exists() else None
+            data = text.encode("utf-8")
+            if old == data:
+                continue
+            originals[path] = old
+            staged[path] = stage(path, data)
+        for path, temp in staged.items():
+            os.replace(temp, path)
+            replaced.append(path)
+    except BaseException as exc:
+        errors = []
+        for path in reversed(replaced):
+            backup = None
+            try:
+                old = originals[path]
+                if old is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    backup = stage(path, old)
+                    os.replace(backup, path)
+            except OSError as rollback_error:
+                errors.append(f"{path}: {rollback_error}")
+            finally:
+                if backup is not None:
+                    backup.unlink(missing_ok=True)
+        if isinstance(exc, OSError):
+            detail = f"; rollback failed: {'; '.join(errors)}" if errors else "; no record changes retained"
+            raise AuditError(f"unable to write audit records: {exc}{detail}", 1) from exc
+        raise
+    finally:
+        for temp in staged.values():
+            temp.unlink(missing_ok=True)
 
 
 def _named_verif_files() -> list[Path]:
-    if not VERIF_DIR.is_dir():
-        return []
-    return sorted(p for p in VERIF_DIR.glob("*.md") if not _STUB_RE.match(p.name))
+    return sorted(VERIF_DIR.glob("*.md")) if VERIF_DIR.is_dir() else []
 
 
 def _all_ticket_files() -> list[Path]:
@@ -405,24 +519,28 @@ def _next_ticket_number() -> int:
     return (max(existing) + 1) if existing else 1
 
 
+def _unique_record(paths: Iterable[Path], num: int, kind: str) -> Optional[Path]:
+    candidates = sorted({path for path in paths if _ticket_num(path.name) == num})
+    if len(candidates) > 1:
+        raise AuditError(f"duplicate {kind} number {num:03d}: " + ", ".join(p.name for p in candidates), 1)
+    if not candidates:
+        return None
+    path = candidates[0]
+    parsed_num, category, _ = parse_ticket_filename(path.name)
+    if parsed_num is None or parsed_num < 1 or category not in VALID_CATEGORIES:
+        raise AuditError(f"invalid {kind} filename: {path.name}; use NNN-CATEGORY-slug.md", 1)
+    return path
+
+
 def _ticket_for(num: int) -> Optional[Path]:
-    candidates = list(TICKETS_DIR.glob(f"{num}-*.md")) + list(TICKETS_DIR.glob(f"{num:03d}-*.md"))
-    return next((p for p in candidates if not _STUB_RE.match(p.name)), None)
+    return _unique_record(_all_ticket_files(), num, "ticket")
 
 
 def _verif_for(num: int, ticket_path: Optional[Path] = None) -> Optional[Path]:
-    if not VERIF_DIR.is_dir():
-        return None
-    candidates: list[Path] = []
-    for pat in (f"{num}-*.md", f"{num:03d}-*.md"):
-        candidates.extend(p for p in VERIF_DIR.glob(pat) if not _STUB_RE.match(p.name))
-    if not candidates:
-        return None
-    if ticket_path is not None:
-        for p in candidates:
-            if p.name == ticket_path.name:
-                return p
-    return sorted(candidates)[0]
+    path = _unique_record(_named_verif_files(), num, "verification")
+    if path and ticket_path and path.name != ticket_path.name:
+        raise AuditError(f"ticket/verification name mismatch: {ticket_path.name} vs {path.name}", 1)
+    return path
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -431,58 +549,59 @@ def _verif_for(num: int, ticket_path: Optional[Path] = None) -> Optional[Path]:
 
 
 def _replace_field(text: str, label: str, value: str) -> str:
-    header = _metadata_header(text)
-    pattern = rf"^([ \t]*\*\*{re.escape(label)}:\*\*[ \t]*)(?:`[^`\n]*`|[^\n]*)"
-    updated, count = re.subn(
-        pattern, lambda match: f"{match.group(1).rstrip()} `{value}`", header,
-        count=1, flags=re.MULTILINE,
-    )
-    return updated + text[len(header):] if count else text
+    if any(char in value for char in ("\n", "\r", "`")):
+        raise AuditError(f"{label} must be a single-line value without backticks", 2)
+    found = _header_field_span(text, label)
+    if found is None:
+        return text
+    start, end, prefix, _ = found
+    return text[:start] + f"{prefix.rstrip()} `{value}`" + text[end:]
 
 
 def _ensure_field_after(text: str, after_label: str, label: str, value: str) -> str:
-    header = _metadata_header(text)
-    if re.search(rf"^[ \t]*\*\*{re.escape(label)}:\*\*", header, flags=re.MULTILINE):
+    if any(char in value for char in ("\n", "\r", "`")):
+        raise AuditError(f"{label} must be a single-line value without backticks", 2)
+    if _header_field_span(text, label) is not None:
         return _replace_field(text, label, value)
-    after_pattern = rf"^([ \t]*\*\*{re.escape(after_label)}:\*\*[^\n]*)$"
-    updated, count = re.subn(
-        after_pattern, lambda match: f"{match.group(1)}\n**{label}:** `{value}`",
-        header, count=1, flags=re.MULTILINE,
-    )
-    if not count:
-        updated = header.rstrip() + f"\n**{label}:** `{value}`\n\n"
-    return updated + text[len(header):]
+    anchor = _header_field_span(text, after_label)
+    if anchor is not None:
+        return text[:anchor[1]] + f"\n**{label}:** `{value}`" + text[anchor[1]:]
+    header = _metadata_header(text)
+    return header.rstrip() + f"\n**{label}:** `{value}`\n\n" + text[len(header):]
 
 
 def _set_ticket_field(text: str, after_label: str, label: str, value: str) -> str:
     """Write a ticket header field, inserting it when absent; never report false success."""
     updated = _ensure_field_after(text, after_label, label, value)
-    pattern = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*"
-    if not re.search(pattern, _metadata_header(updated)) or _field(updated, label) != value:
+    if _header_field_span(updated, label) is None or _field(updated, label) != value:
         raise AuditError(f"unable to set ticket field {label}", 1)
     return updated
 
 
+def _section_span(text: str, section: str) -> tuple[int, int] | None:
+    start = None
+    for begin, end, line, active in _markdown_lines(text):
+        if not active or not re.match(r"^##(?:[ \t\r\n]|$)", line):
+            continue
+        if start is not None:
+            return start, begin
+        if line.rstrip("\r\n \t") == section:
+            start = end
+    return (start, len(text)) if start is not None else None
+
+
 def _section_content(text: str, section: str) -> str:
-    m = re.search(rf"^{re.escape(section)}[ \t]*$", text, flags=re.MULTILINE)
-    if not m:
-        return ""
-    start = m.end()
-    next_m = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
-    end = start + next_m.start() if next_m else len(text)
-    return text[start:end].strip()
+    span = _section_span(text, section)
+    return text[span[0]:span[1]].strip() if span else ""
 
 
 def _replace_section(text: str, section: str, body: str) -> str:
-    header_re = rf"^{re.escape(section)}[ \t]*$"
-    m = re.search(header_re, text, flags=re.MULTILINE)
     body = body.strip()
-    if not m:
+    span = _section_span(text, section)
+    if span is None:
         return text.rstrip() + f"\n\n{section}\n\n{body}\n"
-    start = m.end()
-    next_m = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
-    end = start + next_m.start() if next_m else len(text)
-    return text[:start] + f"\n\n{body}\n\n" + text[end:].lstrip("\n")
+    start, end = span
+    return text[:start].rstrip("\r\n") + f"\n\n{body}\n\n" + text[end:].lstrip("\r\n")
 
 
 def _append_to_section(text: str, section: str, content: str) -> str:
@@ -494,37 +613,58 @@ def _append_to_section(text: str, section: str, content: str) -> str:
     return _replace_section(text, section, new_body)
 
 
+def _meaningful_content(content: str) -> bool:
+    cleaned = _PLACEHOLDER_RE.sub("", content)
+    for line in cleaned.splitlines():
+        line = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", line)
+        line = re.sub(r"^\[[ xX]\]\s*", "", line)
+        line = re.sub(r"^AC\d+\s*[:.-]\s*", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"^\*\*[A-Z_]+\*\*\s*$", "", line)
+        if re.match(r"^\s*(`{3,}|~{3,})", line):
+            continue
+        if line.strip(" \t`*_#-:[]"):
+            return True
+    return False
+
+
 def _has_nonplaceholder_content(text: str, section: str) -> bool:
-    content = _section_content(text, section)
-    if not content:
-        return False
-    cleaned = _PLACEHOLDER_RE.sub("", content).strip()
-    # Empty unchecked list markers do not count as evidence/criteria.
-    cleaned = re.sub(r"^-\s*\[[ xX]\]\s*$", "", cleaned, flags=re.MULTILINE).strip()
-    return bool(cleaned)
+    return _meaningful_content(_section_content(text, section))
+
+
+def _criterion_definitions(items: Sequence[str]) -> list[tuple[str, str]]:
+    parsed: list[tuple[str, str]] = []
+    used: set[str] = set()
+    for item in items:
+        raw = re.sub(r"^\s*[-*+]\s*(?:\[[ xX]\]\s*)?", "", item).strip()
+        match = re.match(r"^(AC\d+)\s*[:.-]\s*(.*)$", raw, re.IGNORECASE)
+        cid, description = (match[1].upper(), match[2].strip()) if match else ("", raw)
+        if cid:
+            if cid in used:
+                raise AuditError(f"duplicate acceptance criterion {cid}", 2)
+            used.add(cid)
+        parsed.append((cid, description))
+    result: list[tuple[str, str]] = []
+    next_id = 1
+    for cid, description in parsed:
+        if not cid:
+            while f"AC{next_id}" in used:
+                next_id += 1
+            cid = f"AC{next_id}"
+            used.add(cid)
+        result.append((cid, description))
+    return result
 
 
 def _acceptance_criteria(ticket_text: str) -> dict[str, str]:
     content = _section_content(ticket_text, "## Acceptance Criteria")
-    criteria: dict[str, str] = {}
-    auto = 1
-    for line in content.splitlines():
-        raw = line.strip()
-        if not raw.startswith("-"):
-            continue
-        raw = _PLACEHOLDER_RE.sub("", raw).strip()
-        raw = re.sub(r"^-\s*\[[ xX]\]\s*", "", raw).strip()
-        if not raw:
-            continue
-        m = re.match(r"^(AC\d+)\s*[:.-]\s*(.+)$", raw, flags=re.IGNORECASE)
-        if m:
-            cid = m.group(1).upper()
-            criteria[cid] = m.group(2).strip()
-        else:
-            cid = f"AC{auto}"
-            criteria[cid] = raw
-        auto += 1
-    return criteria
+    items = [
+        line.strip() for _, _, line, active in _markdown_lines(content)
+        if active and re.match(r"^\s*[-*+]\s+", line)
+    ]
+    return {
+        cid: description for cid, description in _criterion_definitions(items)
+        if _meaningful_content(description)
+    }
 
 
 _CRITERION_RESULT_RE = re.compile(
@@ -546,8 +686,8 @@ def _criteria_result_ids(text: str) -> set[str]:
     states: dict[str, set[str]] = {}
     for section in ("## Criteria Results", "## Verification Checklist"):
         latest: dict[str, str] = {}
-        for line in _section_content(text, section).splitlines():
-            parsed = _criterion_result(line)
+        for _, _, line, active in _markdown_lines(_section_content(text, section)):
+            parsed = _criterion_result(line) if active else None
             if parsed:
                 latest[parsed[0]] = parsed[1]
         for cid, result in latest.items():
@@ -562,9 +702,12 @@ def _append_criterion_results(text: str, criteria: Sequence[str]) -> str:
         raw = raw.strip()
         if not raw:
             continue
+        if "\n" in raw or "\r" in raw:
+            raise AuditError("each --criterion must be one line; repeat --criterion for additional results", 2)
         parsed = _criterion_result(raw)
-        if parsed:
-            updated_ids.add(parsed[0])
+        if not parsed:
+            raise AuditError(f"invalid criterion result: {raw!r}; use 'AC1: pass - observed result'", 2)
+        updated_ids.add(parsed[0])
         lines.append(f"- [{'x' if parsed and parsed[1] == 'pass' else ' '}] {raw}")
     if not lines:
         return text
@@ -575,13 +718,20 @@ def _append_criterion_results(text: str, criteria: Sequence[str]) -> str:
     if checklist and updated_ids:
         kept: list[str] = []
         superseded: list[str] = []
-        for line in checklist.splitlines():
-            parsed = _criterion_result(line)
-            (superseded if parsed and parsed[0] in updated_ids else kept).append(line)
+        for _, _, line, active in _markdown_lines(checklist):
+            parsed = _criterion_result(line) if active else None
+            (superseded if parsed and parsed[0] in updated_ids else kept).append(line.rstrip("\r\n"))
         if superseded:
             text = _append_to_section(text, "## Criteria Results", "\n".join(superseded))
             text = _replace_section(text, "## Verification Checklist", "\n".join(kept))
     return _append_to_section(text, "## Criteria Results", "\n".join(lines))
+
+
+def _evidence_text(items: Sequence[str]) -> str:
+    return "\n\n".join(
+        item.strip() if "\n" in item or "\r" in item else f"- {item.strip()}"
+        for item in items if item.strip()
+    )
 
 
 def _archive_verification(text: str, *, include_resolution: bool) -> str:
@@ -607,7 +757,10 @@ def _archive_verification(text: str, *, include_resolution: bool) -> str:
                 if section == "Verdict" and _field(text, "Verification Status") == "OPEN":
                     continue
                 # Archived headings must not be parsed as active ## sections.
-                content = re.sub(r"^(#{2,})[ \t]", r"#\1 ", content, flags=re.MULTILINE)
+                content = "".join(
+                    re.sub(r"^(#{2,})[ \t]", r"#\1 ", line) if active else line
+                    for _, _, line, active in _markdown_lines(content)
+                )
                 snapshot.append(f"#### {section}\n\n{content}")
         text = _append_to_section(text, "## Verification History", "\n\n".join(snapshot))
     for section in sections:
@@ -624,12 +777,13 @@ def _history_header() -> str:
 def _append_history(text: str, status: str, commit: str, actor: str, verdict: str) -> str:
     now = datetime.now().isoformat(timespec="seconds")
     line = f"| {md_cell(now)} | `{md_cell(status)}` | `{md_cell(commit)}` | {md_cell(actor)} | {md_cell(verdict)} |"
-    if "## Status History" not in text:
-        return text.rstrip() + f"\n\n## Status History\n\n{_history_header()}{line}\n"
+    content = _section_content(text, "## Status History")
     header = _history_header()
-    if header in text:
-        return text.replace(header, header + line + "\n", 1)
-    return _append_to_section(text, "## Status History", line)
+    if content.startswith(header.rstrip()):
+        content = header + line + "\n" + content[len(header.rstrip()):].lstrip("\r\n")
+    else:
+        content = header + line + ("\n" + content if content else "")
+    return _replace_section(text, "## Status History", content)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -637,10 +791,10 @@ def _append_history(text: str, status: str, commit: str, actor: str, verdict: st
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def parse_ticket(path: Path) -> dict[str, Any]:
+def parse_ticket(path: Path, text: Optional[str] = None) -> dict[str, Any]:
     name = path.name
     num, category, slug = parse_ticket_filename(name)
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = path.read_text(encoding="utf-8") if text is None else text
     severity = _field(text, "Severity") or "?"
     module = _field(text, "Module") or "?"
     title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
@@ -696,13 +850,23 @@ def load_records() -> list[dict[str, Any]]:
     for path in _named_verif_files():
         v = parse_verification(path)
         if v["num"] is not None:
+            if v["num"] in verif_index:
+                raise AuditError(f"duplicate verification number {v['id']}; run doctor", 1)
             verif_index[v["num"]] = v
 
     records: list[dict[str, Any]] = []
+    seen: set[int] = set()
     for path in _all_ticket_files():
         t = parse_ticket(path)
         num = t["num"]
-        v = verif_index.get(num, {}) if num is not None else {}
+        if num is None or num < 1 or t["category"] not in VALID_CATEGORIES:
+            raise AuditError(f"invalid ticket filename: {path.name}; run doctor", 1)
+        if num in seen:
+            raise AuditError(f"duplicate ticket number {t['id']}; run doctor", 1)
+        seen.add(num)
+        v = verif_index.get(num, {})
+        if v and Path(v["path"]).name != path.name:
+            raise AuditError(f"ticket/verification name mismatch for {t['id']}; run doctor", 1)
         record = {
             **{k: v2 for k, v2 in t.items() if not k.startswith("_")},
             "status": v.get("status", "UNVERIFIED"),
@@ -773,92 +937,69 @@ def _validate_transition(current: str, target: str) -> None:
 
 
 def _ticket_ready_for_open(ticket_text: str) -> tuple[bool, list[str]]:
-    missing: list[str] = []
-    for section in ("## Description", "## Evidence", "## Acceptance Criteria", "## Suggested Verification"):
-        if not _has_nonplaceholder_content(ticket_text, section):
-            missing.append(section)
+    missing = [
+        section for section in ("## Description", "## Evidence", "## Suggested Verification")
+        if not _has_nonplaceholder_content(ticket_text, section)
+    ]
+    try:
+        if not _acceptance_criteria(ticket_text):
+            missing.append("## Acceptance Criteria")
+    except AuditError as exc:
+        missing.append(exc.message)
     return not missing, missing
 
 
-def _pass_ready(ticket_path: Path, verif_text: str, criteria_args: Sequence[str]) -> tuple[bool, list[str]]:
-    ticket_text = ticket_path.read_text(encoding="utf-8", errors="replace")
-    criteria = _acceptance_criteria(ticket_text)
+def _pass_ready(ticket_path: Path, verif_text: str) -> tuple[bool, list[str]]:
+    ticket_text = ticket_path.read_text(encoding="utf-8")
     missing: list[str] = []
+    try:
+        criteria = _acceptance_criteria(ticket_text)
+    except AuditError as exc:
+        return False, [exc.message]
     if not criteria:
         missing.append("ticket has no non-placeholder acceptance criteria")
-    provided_results: dict[str, str] = {}
-    for raw in criteria_args:
-        parsed = _criterion_result(raw)
-        if parsed:
-            provided_results[parsed[0]] = parsed[1]
-    existing_ids = _criteria_result_ids(verif_text)
+    passing = _criteria_result_ids(verif_text)
     for cid in criteria:
-        result = provided_results.get(cid)
-        if result is not None and result != "pass":
-            missing.append(f"{cid} result is {result}, not pass")
-        elif result != "pass" and cid not in existing_ids:
+        if cid not in passing:
             missing.append(f"missing passing evidence for {cid}")
-    if not _has_nonplaceholder_content(verif_text, "## Evidence") and not criteria_args:
+    if not _has_nonplaceholder_content(verif_text, "## Evidence"):
         missing.append("verification evidence is empty")
     if not _has_nonplaceholder_content(verif_text, "## Test Verification"):
         missing.append("test verification is empty")
     verdict = _section_content(verif_text, "## Verdict")
-    if not _has_nonplaceholder_content(verif_text, "## Verdict"):
+    if not _meaningful_content(verdict):
         missing.append("verdict is empty")
     elif (label := re.match(r"^\*\*(\w+)\*\*", verdict)) and label.group(1).upper() != "PASS":
         missing.append(f"verdict status is {label.group(1)}, not PASS")
     return not missing, missing
 
 
-def _validate_transition_requirements(
-    target: str,
-    ticket_path: Optional[Path],
-    verif_text: str,
-    *,
-    fix_commit: Optional[str] = None,
-    verified_commit: Optional[str] = None,
-    verdict: Optional[str] = None,
-    evidence: Sequence[str] = (),
-    test: Optional[str] = None,
-    criteria: Sequence[str] = (),
-    reason: Optional[str] = None,
-) -> None:
-    target = target.upper()
-    if target == "OPEN":
-        if ticket_path is None:
-            raise AuditError("OPEN requires an existing ticket file", 2)
-        ok, missing = _ticket_ready_for_open(ticket_path.read_text(encoding="utf-8", errors="replace"))
-        if not ok:
-            raise AuditError(f"OPEN requires evidence-ready ticket content; missing: {', '.join(missing)}", 2)
-    elif target == "READY_FOR_VERIFICATION":
-        existing_commit = _field(verif_text, "Fix Commit")
-        existing_evidence = _has_nonplaceholder_content(verif_text, "## Resolution Evidence") or _has_nonplaceholder_content(verif_text, "## Evidence")
-        existing_test = _has_nonplaceholder_content(verif_text, "## Test Verification")
-        if not (fix_commit or existing_commit):
+def _validate_transition_requirements(target: str, ticket_path: Optional[Path], verif_text: str) -> None:
+    """Validate the record that will actually be persisted, not CLI argument truthiness."""
+    if ticket_path is None:
+        raise AuditError(f"{target} requires an existing ticket file", 2)
+    if target not in {"DRAFT", "INVALID", "WONTFIX"}:
+        ready, missing = _ticket_ready_for_open(ticket_path.read_text(encoding="utf-8"))
+        if not ready:
+            raise AuditError(f"{target} requires evidence-ready ticket content; missing: {', '.join(missing)}", 2)
+    if target == "READY_FOR_VERIFICATION":
+        if not _meaningful_content(_field(verif_text, "Fix Commit")):
             raise AuditError("READY_FOR_VERIFICATION requires --fix-commit", 2)
-        if not (evidence or existing_evidence):
-            raise AuditError("READY_FOR_VERIFICATION requires --evidence or existing resolution evidence", 2)
-        if not (test or existing_test):
-            raise AuditError("READY_FOR_VERIFICATION requires --test or existing test verification", 2)
+        if not _has_nonplaceholder_content(verif_text, "## Resolution Evidence"):
+            raise AuditError("READY_FOR_VERIFICATION requires non-placeholder resolution evidence", 2)
+        if not _has_nonplaceholder_content(verif_text, "## Test Verification"):
+            raise AuditError("READY_FOR_VERIFICATION requires non-placeholder test verification", 2)
     elif target == "PASS":
-        if ticket_path is None:
-            raise AuditError("PASS requires an existing ticket file", 2)
-        prospective = verif_text
-        if evidence:
-            prospective = _append_to_section(prospective, "## Evidence", "\n".join(f"- {x}" for x in evidence))
-        if test:
-            prospective = _append_to_section(prospective, "## Test Verification", test)
-        if verdict:
-            prospective = _replace_section(prospective, "## Verdict", f"**PASS**\n\n{verdict}")
-        ok, missing = _pass_ready(ticket_path, prospective, criteria)
+        ok, missing = _pass_ready(ticket_path, verif_text)
         if not ok:
             raise AuditError("PASS requirements not met: " + "; ".join(missing), 2)
-        if not (verified_commit or _field(verif_text, "Verified Commit")):
+        if not _meaningful_content(_field(verif_text, "Verified Commit")):
             raise AuditError("PASS requires --verified-commit or existing Verified Commit", 2)
-    elif target in {"WONTFIX", "INVALID", "BLOCKED"}:
-        rationale = reason or verdict or _section_content(verif_text, "## Verdict")
-        if not rationale or not _PLACEHOLDER_RE.sub("", rationale).strip():
-            raise AuditError(f"{target} requires --reason or --verdict rationale", 2)
+    if target in {"WONTFIX", "INVALID", "BLOCKED"}:
+        verdict = _section_content(verif_text, "## Verdict")
+        label = re.match(r"^\*\*(\w+)\*\*", verdict)
+        if not _meaningful_content(verdict) or (label and label[1].upper() != target):
+            raise AuditError(f"{target} requires --reason or --verdict rationale for this status", 2)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -867,29 +1008,40 @@ def _validate_transition_requirements(
 
 
 def _inside_git_repo() -> bool:
-    result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT, capture_output=True, text=True)
+    try:
+        result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT, capture_output=True, text=True)
+    except OSError as exc:
+        raise AuditError(f"unable to run git: {exc}", 1) from exc
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
 def _ensure_clean_worktree(allow_dirty: bool = False) -> None:
     if not _inside_git_repo():
-        return
-    result = subprocess.run(["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True)
-    dirty = result.stdout.strip()
-    if dirty and not allow_dirty:
+        raise AuditError("--git-commit requires a Git worktree; no records were changed", 1)
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude)audit/.create.lock"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if result.returncode:
+        raise AuditError("unable to inspect worktree: " + result.stderr.strip(), 1)
+    if result.stdout.strip() and not allow_dirty:
         raise AuditError(
-            "dirty worktree before audit metadata commit; commit/stash changes or pass --allow-dirty\n" + dirty,
-            1,
+            "dirty worktree before audit metadata commit; commit/stash changes or pass --allow-dirty\n"
+            + result.stdout.strip(), 1,
         )
 
 
 def _git_commit(paths: Sequence[Path], message: str, allow_dirty: bool = False) -> str:
-    _ensure_clean_worktree(allow_dirty=allow_dirty)
     if not paths:
         return ""
-    subprocess.run(["git", "add", "-f", *[str(p) for p in paths]], cwd=ROOT, check=True)
-    result = subprocess.run(["git", "commit", "-m", message], cwd=ROOT, capture_output=True, text=True)
-    if result.returncode != 0:
+    # Preflight already ran before mutations. Only these files belong in the
+    # metadata commit; unrelated staged work must remain staged.
+    names = [str(path) for path in dict.fromkeys(paths)]
+    add = subprocess.run(["git", "add", "-f", "--", *names], cwd=ROOT, capture_output=True, text=True)
+    if add.returncode:
+        raise AuditError("git add failed: " + (add.stderr.strip() or add.stdout.strip()), 1)
+    result = subprocess.run(["git", "commit", "--only", "-m", message, "--", *names], cwd=ROOT, capture_output=True, text=True)
+    if result.returncode:
         raise AuditError("git commit failed: " + (result.stderr.strip() or result.stdout.strip()), 1)
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     return sha.stdout.strip() if sha.returncode == 0 else ""
@@ -936,10 +1088,12 @@ def _ticket_text(
     desc = description or "<!-- TODO: Add a clear, factual description of the issue. -->"
     exp = expected or "<!-- TODO: What should happen according to requirements, design, or user expectations. -->"
     act = actual or "<!-- TODO: What actually happens. Include error messages, wrong output, crash details. -->"
-    ev = "\n".join(f"- {e}" for e in evidence) if evidence else "<!-- TODO: Add concrete evidence: code snippets, log lines, traces, reproduction steps. -->"
+    ev = _evidence_text(evidence) if evidence else "<!-- TODO: Add concrete evidence: code snippets, log lines, traces, reproduction steps. -->"
     rec = recommendation or "<!-- TODO: Add actionable fix: what to change, where, and why. -->"
     if criteria:
-        ac = "\n".join(f"- [ ] AC{i}: {c}" for i, c in enumerate(criteria, 1))
+        if any("\n" in item or "\r" in item for item in criteria):
+            raise AuditError("each --acceptance-criterion must be one line; repeat the option", 2)
+        ac = "\n".join(f"- [ ] {cid}: {description}" for cid, description in _criterion_definitions(criteria))
     else:
         ac = "- [ ] <!-- TODO: AC1: observable, testable condition that resolves the issue. -->"
     sv = suggested_verification or "<!-- TODO: specific test commands, reproduction steps, or assertions an independent verifier should run. -->"
@@ -998,7 +1152,7 @@ def _write_stub_verification(vpath: Path, num: int, ticket_path: Path) -> None:
     t = parse_ticket(ticket_path)
     status = "DRAFT" if not _ticket_ready_for_open(t["_text"])[0] else "OPEN"
     text = _verification_text(num, t["category"], t["severity"], t["slug"], status)
-    vpath.write_text(text, encoding="utf-8")
+    _write_documents({vpath: text})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1033,6 +1187,11 @@ def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
     if sev not in VALID_SEVERITIES:
         raise AuditError(f"unknown severity '{args.severity}'. Valid: {', '.join(sorted(VALID_SEVERITIES))}", 2)
 
+    for label, value in (("Title", args.title), ("Module", args.module), ("Lines", args.lines), ("Source", args.source or "")):
+        if any(char in value for char in ("\n", "\r", "`")):
+            raise AuditError(f"{label} must be a single-line value without backticks", 2)
+    if not args.title.strip():
+        raise AuditError("title must be nonempty", 2)
     slug = _slugify(args.title)
     TICKETS_DIR.mkdir(parents=True, exist_ok=True)
     VERIF_DIR.mkdir(parents=True, exist_ok=True)
@@ -1076,20 +1235,17 @@ def cmd_create(args: argparse.Namespace) -> dict[str, Any]:
         verif_path = VERIF_DIR / verif_name
         if ticket_path.exists() or verif_path.exists():
             raise AuditError("ticket allocator selected an occupied number; retry after resolving numbering drift", 1)
-        ticket_path.write_text(ticket_body, encoding="utf-8")
-        try:
-            verif_path.write_text(_verification_text(next_num, cat, sev, slug, status), encoding="utf-8")
-            if dep_ids or block_ids:
-                _mutate_dependencies(
-                    source_id,
-                    depends_on=sorted(dep_ids),
-                    blocks=sorted(block_ids),
-                    remove=False,
-                )
-        except Exception:
-            ticket_path.unlink(missing_ok=True)
-            verif_path.unlink(missing_ok=True)
-            raise
+        pending = {
+            ticket_path: ticket_body,
+            verif_path: _verification_text(next_num, cat, sev, slug, status),
+        }
+        if dep_ids or block_ids:
+            _mutate_dependencies(
+                source_id, depends_on=sorted(dep_ids), blocks=sorted(block_ids),
+                remove=False, pending=pending,
+            )
+        else:
+            _write_documents(pending)
 
     result = {
         "ok": True,
@@ -1159,14 +1315,14 @@ def cmd_summary(args: argparse.Namespace) -> None:
 def cmd_status(args: argparse.Namespace) -> None:
     results: dict[str, Any] = {}
     exit_failed = False
-    for raw in args.id:
+    for raw in dict.fromkeys(args.id):
         try:
-            num = int(raw)
-        except ValueError:
-            results[raw] = {"error": "invalid id"}
+            num = _parse_id(raw)
+            path = _verif_for(num, _ticket_for(num))
+        except AuditError as exc:
+            results[raw] = {"error": exc.message}
             exit_failed = True
             continue
-        path = _verif_for(num)
         if path is None:
             results[f"{num:03d}"] = {"status": "NO FILE"}
             exit_failed = True
@@ -1189,17 +1345,20 @@ def cmd_show(args: argparse.Namespace) -> None:
     if not args.id:
         raise AuditError("Usage: audit show <ticket_id>...", 2)
     found_any = False
+    failed = False
     first = True
-    for raw in args.id:
+    for raw in dict.fromkeys(args.id):
         try:
-            num = int(raw)
-        except ValueError:
-            print(f"{raw}: invalid id", file=sys.stderr)
+            num = _parse_id(raw)
+        except AuditError as exc:
+            print(f"{raw}: {exc}", file=sys.stderr)
+            failed = True
             continue
         ticket_path = _ticket_for(num)
         verif_path = _verif_for(num, ticket_path)
         if not ticket_path and not verif_path:
             print(f"{num:03d}: ticket not found", file=sys.stderr)
+            failed = True
             continue
         found_any = True
         sep = "─" * 70
@@ -1220,8 +1379,8 @@ def cmd_show(args: argparse.Namespace) -> None:
         else:
             print(f"{num:03d}: no verification file found")
         print()
-    if not found_any:
-        sys.exit(1)
+    if failed or not found_any:
+        raise AuditError("one or more requested records could not be shown", 1)
 
 
 def _apply_transition_to_file(
@@ -1238,19 +1397,23 @@ def _apply_transition_to_file(
     criteria: Sequence[str] = (),
     reason: Optional[str] = None,
 ) -> ItemResult:
-    ticket_path = _ticket_for(num)
-    path = _verif_for(num, ticket_path)
     tid = f"{num:03d}"
-    if path is None:
-        return ItemResult(id=tid, ok=False, error="verification file not found")
-    text = path.read_text(encoding="utf-8", errors="replace")
-    current = (parse_verification(path)["status"] or "UNVERIFIED").upper()
+    current = ""
+    path = None
     try:
+        ticket_path = _ticket_for(num)
+        path = _verif_for(num, ticket_path)
+        if path is None:
+            return ItemResult(id=tid, ok=False, error="verification file not found")
+        text = path.read_text(encoding="utf-8")
+        current = _field(text, "Verification Status").upper() or "UNVERIFIED"
         _require_actor(actor, target_status)
         _validate_transition(current, target_status)
         new_resolution = target_status == "READY_FOR_VERIFICATION" and (
             current != target_status or bool(fix_commit and fix_commit != _field(text, "Fix Commit"))
         )
+        if new_resolution:
+            _check_resolution_eligibility(num)
         reopened = target_status == "OPEN" and current != "OPEN"
         regressed = target_status == "REGRESS" and current == "PASS"
         previous_revision = _field(text, "Verified Commit")
@@ -1259,67 +1422,62 @@ def _apply_transition_to_file(
         )
         if new_resolution or reopened or new_revision or regressed:
             text = _archive_verification(text, include_resolution=new_resolution or reopened)
-        if reopened:
+        if reopened or new_resolution:
             for label in ("Fix Commit", "Resolved Date", "Resolved By"):
                 text = _replace_field(text, label, "")
-        _validate_transition_requirements(
-            target_status,
-            ticket_path,
-            text,
-            fix_commit=fix_commit,
-            verified_commit=verified_commit,
-            verdict=verdict,
-            evidence=evidence,
-            test=test,
-            criteria=criteria,
-            reason=reason,
-        )
-    except AuditError as exc:
-        return ItemResult(id=tid, ok=False, path=_rel(path), status=current, error=exc.message)
 
-    today = date.today().isoformat()
-    new = _replace_field(text, "Verification Status", target_status)
+        today = date.today().isoformat()
+        new = _set_ticket_field(text, "Original Severity", "Verification Status", target_status)
+        if target_status == "READY_FOR_VERIFICATION":
+            new = _set_ticket_field(new, "Verification Status", "Resolved Date", today)
+            new = _set_ticket_field(new, "Resolved Date", "Resolved By", actor)
+            if fix_commit is not None:
+                new = _set_ticket_field(new, "Verified By", "Fix Commit", fix_commit)
+            if evidence:
+                new = _append_to_section(new, "## Resolution Evidence", _evidence_text(evidence))
+            if changed:
+                new = _append_to_section(new, "## Current State", "**File(s) Changed:**\n" + "\n".join(f"- `{x}`" for x in changed))
+            if test is not None:
+                new = _append_to_section(new, "## Test Verification", test)
+            if verdict:
+                new = _replace_section(new, "## Verdict", f"**{target_status}**\n\n{verdict}")
+        elif target_status in VERIFICATION_STATUSES:
+            if actor == "audit-verification":
+                new = _set_ticket_field(new, "Resolved By", "Verified Date", today)
+                new = _set_ticket_field(new, "Verified Date", "Verified By", actor)
+            if verified_commit is not None:
+                new = _set_ticket_field(new, "Fix Commit", "Verified Commit", verified_commit)
+            if evidence:
+                new = _append_to_section(new, "## Evidence", _evidence_text(evidence))
+            if criteria:
+                if ticket_path is None:
+                    raise AuditError("criterion results require an existing ticket", 2)
+                known = _acceptance_criteria(ticket_path.read_text(encoding="utf-8"))
+                new = _append_criterion_results(new, criteria)
+                for raw in criteria:
+                    parsed = _criterion_result(raw)
+                    if parsed and parsed[0] not in known:
+                        raise AuditError(f"criterion {parsed[0]} is not defined in the ticket", 2)
+            if test is not None:
+                new = _append_to_section(new, "## Test Verification", test)
+            verdict = verdict or reason
+            if verdict:
+                new = _replace_section(new, "## Verdict", f"**{target_status}**\n\n{verdict}")
+            elif target_status in {"WONTFIX", "INVALID", "BLOCKED"} and current != target_status:
+                raise AuditError(f"{target_status} requires a new --reason or --verdict", 2)
+        elif target_status == "OPEN":
+            if verdict:
+                new = _replace_section(new, "## Verdict", f"**OPEN**\n\n{verdict}")
 
-    if target_status == "READY_FOR_VERIFICATION":
-        new = _ensure_field_after(new, "Verification Status", "Resolved Date", today)
-        new = _ensure_field_after(new, "Resolved Date", "Resolved By", actor)
-        if fix_commit:
-            new = _replace_field(new, "Fix Commit", fix_commit)
-        if evidence:
-            new = _append_to_section(new, "## Resolution Evidence", "\n".join(f"- {x}" for x in evidence))
-        if changed:
-            new = _append_to_section(new, "## Current State", "**File(s) Changed:**\n" + "\n".join(f"- `{x}`" for x in changed))
-        if test:
-            new = _append_to_section(new, "## Test Verification", test)
-        if verdict:
-            new = _replace_section(new, "## Verdict", f"**READY_FOR_VERIFICATION**\n\n{verdict}")
-    elif target_status in VERIFICATION_STATUSES:
-        if target_status in {"PASS", "PARTIAL", "FAIL", "REGRESS", "INVALID"}:
-            new = _replace_field(new, "Verified Date", today)
-            new = _replace_field(new, "Verified By", actor)
-        if verified_commit:
-            new = _ensure_field_after(new, "Fix Commit", "Verified Commit", verified_commit)
-        if evidence:
-            new = _append_to_section(new, "## Evidence", "\n".join(f"- {x}" for x in evidence))
-        if criteria:
-            new = _append_criterion_results(new, criteria)
-        if test:
-            new = _append_to_section(new, "## Test Verification", test)
-        if reason and not verdict:
-            verdict = reason
-        if verdict:
-            new = _replace_section(new, "## Verdict", f"**{target_status}**\n\n{verdict}")
-    elif target_status == "OPEN":
-        # OPEN means accepted, evidence-ready ticket. Verification remains unverified.
-        new = _replace_field(new, "Verified Date", "")
-        new = _replace_field(new, "Verified By", "")
-        if verdict:
-            new = _replace_section(new, "## Verdict", f"**OPEN**\n\n{verdict}")
-
-    commit_value = verified_commit or fix_commit or ""
-    new = _append_history(new, target_status, commit_value, actor, verdict or reason or "")
-    path.write_text(new, encoding="utf-8")
-    return ItemResult(id=tid, ok=True, message=f"updated → {target_status}", path=_rel(path), status=target_status)
+        # The exact same persisted representation is checked by doctor.
+        _validate_transition_requirements(target_status, ticket_path, new)
+        commit_value = verified_commit or fix_commit or ""
+        new = _append_history(new, target_status, commit_value, actor, verdict or reason or "")
+        _write_documents({path: new})
+        return ItemResult(id=tid, ok=True, message=f"updated → {target_status}", path=_rel(path), status=target_status)
+    except (AuditError, OSError, UnicodeError) as exc:
+        message = exc.message if isinstance(exc, AuditError) else str(exc)
+        return ItemResult(id=tid, ok=False, path=_rel(path) if path else "", status=current, error=message)
 
 
 def _batch_transition(
@@ -1349,13 +1507,17 @@ def _batch_transition(
     result = BatchResult(ok=True, status=status)
     changed_paths: list[Path] = []
     with _create_lock_cm():
+        seen_ids: set[int] = set()
         for raw in ids:
             try:
-                num = int(raw)
-            except ValueError:
+                num = _parse_id(raw)
+            except AuditError:
                 item = ItemResult(id=raw, ok=False, error="invalid id")
                 result.failed.append(item)
                 continue
+            if num in seen_ids:
+                continue
+            seen_ids.add(num)
             item = _apply_transition_to_file(
                 num=num,
                 target_status=status,
@@ -1377,9 +1539,14 @@ def _batch_transition(
                 result.failed.append(item)
     result.ok = not result.failed
     if auto_commit and changed_paths and not result.failed:
-        sha = _git_commit(changed_paths, commit_message or f"docs: audit {status.lower()} {' '.join(ids)}", allow_dirty=allow_dirty)
-        for item in result.updated:
-            item.message += f"; committed {sha}"
+        try:
+            sha = _git_commit(changed_paths, commit_message or f"docs: audit {status.lower()} {' '.join(ids)}", allow_dirty=allow_dirty)
+        except (AuditError, OSError) as exc:
+            result.ok = False
+            result.commit_error = f"records updated, but {exc}"
+        else:
+            for item in result.updated:
+                item.message += f"; committed {sha}"
     return result
 
 
@@ -1391,6 +1558,8 @@ def _render_batch_result(result: BatchResult, as_json: bool, verb: str) -> None:
         print(f"{item.id}: {verb} → {item.status}  ({item.path})")
     for item in result.failed:
         print(f"{item.id}: ERROR — {item.error}", file=sys.stderr)
+    if result.commit_error:
+        print(f"ERROR — {result.commit_error}", file=sys.stderr)
 
 
 def cmd_update(args: argparse.Namespace) -> None:
@@ -1459,13 +1628,13 @@ def cmd_verify(args: argparse.Namespace) -> None:
 
 
 def cmd_close(args: argparse.Namespace) -> None:
-    result = _batch_transition(args.id, "INVALID", args.actor, verdict=f"INVALID: {args.reason}", reason=args.reason)
+    result = _batch_transition(args.id, "INVALID", args.actor, verdict=args.reason, reason=args.reason)
     _render_batch_result(result, False, "closed")
     sys.exit(result.exit_code())
 
 
 def cmd_wontfix(args: argparse.Namespace) -> None:
-    result = _batch_transition(args.id, "WONTFIX", args.actor, verdict=f"WONTFIX: {args.reason}", reason=args.reason)
+    result = _batch_transition(args.id, "WONTFIX", args.actor, verdict=args.reason, reason=args.reason)
     _render_batch_result(result, False, "wontfix")
     sys.exit(result.exit_code())
 
@@ -1474,6 +1643,47 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     result = _batch_transition(args.id, "OPEN", args.actor, verdict=args.reason or "Reopened")
     _render_batch_result(result, False, "reopened")
     sys.exit(result.exit_code())
+
+
+def _dependency_issues(records: Sequence[dict[str, Any]]) -> list[str]:
+    tickets = {r["id"]: r for r in records if r.get("path")}
+    issues: list[str] = []
+    graph = {tid: set(r.get("depends_on", [])) for tid, r in tickets.items()}
+    for tid, record in tickets.items():
+        for label, inverse in (("depends_on", "blocks"), ("blocks", "depends_on")):
+            for ref in record.get(label, []):
+                if not re.fullmatch(r"[0-9]+", ref) or int(ref) < 1:
+                    issues.append(f"Ticket {tid} has invalid {label} ID {ref!r}")
+                    continue
+                if ref == tid:
+                    issues.append(f"Ticket {tid} has a self dependency")
+                other = tickets.get(ref)
+                if other is None:
+                    issues.append(f"Ticket {tid} {label} missing ticket {ref}")
+                elif tid not in other.get(inverse, []):
+                    issues.append(f"Dependency {tid} {label} {ref} is not recorded on both tickets; use doctor --fix")
+                if label == "blocks" and other:
+                    graph[ref].add(tid)
+    try:
+        TopologicalSorter(graph).prepare()
+    except CycleError as exc:
+        issues.append("Dependency cycle detected: " + " -> ".join(exc.args[1]))
+    return list(dict.fromkeys(issues))
+
+
+def _check_resolution_eligibility(num: int) -> None:
+    records = load_records()
+    issues = _dependency_issues(records)
+    if issues:
+        raise AuditError("invalid dependency state: " + "; ".join(issues), 1)
+    record = next((r for r in records if r.get("num") == num and r.get("path")), None)
+    if record is None:
+        raise AuditError(f"ticket {num:03d} not found", 1)
+    if record.get("decision") != "FIX":
+        raise AuditError(f"ticket {num:03d} Decision is {record.get('decision')!r}; triage it to FIX before resolving", 2)
+    states = {r["id"]: r.get("status", "") for r in records}
+    if _is_blocked(record, states):
+        raise AuditError(f"ticket {num:03d} has dependencies that have not reached PASS", 2)
 
 
 def _is_blocked(record: dict[str, Any], status_by_id: dict[str, str]) -> bool:
@@ -1523,9 +1733,12 @@ def _related_resolution_tickets(top: dict[str, Any], candidates: list[dict[str, 
 
 def cmd_next(args: argparse.Namespace) -> None:
     records = load_records()
+    issues = _dependency_issues(records)
+    if issues:
+        raise AuditError("invalid dependency state: " + "; ".join(issues), 1)
     status_by_id = {r["id"]: r.get("status", "") for r in records}
     if args.for_role == "resolution":
-        allowed = {"OPEN", "PARTIAL", "FAIL", "REGRESS", "BLOCKED"}
+        allowed = {"OPEN", "PARTIAL", "FAIL", "REGRESS"}
     elif args.for_role == "verification":
         allowed = {"READY_FOR_VERIFICATION"}
     else:
@@ -1535,14 +1748,18 @@ def cmd_next(args: argparse.Namespace) -> None:
     blocked_skipped = 0
     for r in records:
         status = r.get("status")
-        if status not in allowed:
+        if status not in allowed or not r.get("path") or not r.get("verification_path"):
             continue
         if args.category and r.get("category") != args.category.upper():
             continue
         if args.severity and str(r.get("severity", "")).lower() != args.severity.lower():
             continue
-        if args.for_role == "resolution" and r.get("decision") != "FIX":
-            continue
+        if args.for_role == "resolution":
+            if r.get("decision") not in TRIAGE_DECISIONS:
+                raise AuditError(f"ticket {r['id']} has invalid or missing Decision; run triage set", 1)
+            if r.get("decision") != "FIX":
+                continue
+        _validate_transition_requirements(status, Path(r["path"]), Path(r["verification_path"]).read_text(encoding="utf-8"))
         blocked = _is_blocked(r, status_by_id)
         if blocked and args.for_role == "resolution":
             blocked_skipped += 1
@@ -1550,7 +1767,10 @@ def cmd_next(args: argparse.Namespace) -> None:
         candidates.append(r)
 
     if not candidates:
-        payload = {"ok": True, "for": args.for_role, "ticket": None, "blocked_skipped": blocked_skipped}
+        payload = {
+            "ok": True, "for": args.for_role, "ticket": None, "queue_size": 0,
+            "blocked_skipped": blocked_skipped, "related_tickets": [],
+        }
         if getattr(args, "json", False):
             _json_print(payload)
         else:
@@ -1633,7 +1853,9 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
                 ticket_by_num[num] = p
 
     for p in verif_paths:
-        num = _ticket_num(p.name)
+        num, category, _ = parse_ticket_filename(p.name)
+        if num is None or num < 1 or category not in VALID_CATEGORIES:
+            issues.append(f"Invalid verification filename: {p.name}; use NNN-CATEGORY-slug.md")
         if num is not None:
             if num in verif_by_num:
                 issues.append(f"Duplicate verification number {num:03d}: {p.name} and {verif_by_num[num].name}")
@@ -1652,9 +1874,11 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
 
     for p in ticket_paths:
         t = parse_ticket(p)
-        if t["category"] not in VALID_CATEGORIES and t["category"] != "?":
+        if t["num"] is None or t["num"] < 1 or t["category"] not in VALID_CATEGORIES:
+            issues.append(f"Invalid ticket filename: {p.name}; use NNN-CATEGORY-slug.md")
+        if t["category"] not in VALID_CATEGORIES:
             issues.append(f"Invalid category in {p.name}: {t['category']}")
-        if t["severity"] not in VALID_SEVERITIES and t["severity"] != "?":
+        if t["severity"] not in VALID_SEVERITIES:
             issues.append(f"Invalid severity in {p.name}: {t['severity']}")
         if t["decision"] not in TRIAGE_DECISIONS:
             issues.append(f"Invalid or missing Decision in {p.name}: {t['decision']!r}")
@@ -1664,11 +1888,11 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
         if group and not FIX_GROUP_PATTERN.fullmatch(group):
             issues.append(f"Invalid Fix Group in {p.name}: {group!r}")
         impact, effort = t["impact"], t["effort"]
-        if impact and (not impact.isdigit() or not 1 <= int(impact) <= 5):
+        if impact and not re.fullmatch(r"[1-5]", impact):
             issues.append(f"Invalid Impact in {p.name}: {impact!r}")
-        if effort and (not effort.isdigit() or not 1 <= int(effort) <= 5):
+        if effort and not re.fullmatch(r"[1-5]", effort):
             issues.append(f"Invalid Effort in {p.name}: {effort!r}")
-        if impact and effort and impact.isdigit() and effort.isdigit():
+        if re.fullmatch(r"[1-5]", impact) and re.fullmatch(r"[1-5]", effort):
             expected_priority = int(impact) * (6 - int(effort))
             if t["priority"] != str(expected_priority):
                 issues.append(f"Inconsistent Priority in {p.name}: expected {expected_priority}, got {t['priority']!r}")
@@ -1679,95 +1903,70 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
         v = parse_verification(p)
         status = v["status"]
         if status not in VALID_STATUSES:
-            issues.append(f"Invalid status in {p.name}: {status}")
+            issues.append(f"Invalid or missing Verification Status in {p.name}: {status}")
+            continue
         ticket_path = ticket_by_num.get(v["num"])
-        if ticket_path:
-            ttext = ticket_path.read_text(encoding="utf-8", errors="replace")
-            if status != "DRAFT":
-                ready, missing = _ticket_ready_for_open(ttext)
-                if not ready:
-                    issues.append(f"{status} ticket {p.name} has non-ready ticket content: {', '.join(missing)}")
-            else:
-                warnings.append(f"DRAFT ticket {p.name} is incomplete and excluded from resolution queue")
+        if status == "DRAFT":
+            warnings.append(f"DRAFT ticket {p.name} is excluded from resolution queue")
+        elif ticket_path:
+            try:
+                _validate_transition_requirements(status, ticket_path, v["_text"])
+            except AuditError as exc:
+                issues.append(f"{p.name}: {exc.message}")
 
-        if status == "READY_FOR_VERIFICATION":
-            vtext = p.read_text(encoding="utf-8", errors="replace")
-            if not v.get("commit"):
-                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty Fix Commit")
-            if not _has_nonplaceholder_content(vtext, "## Resolution Evidence") and not _has_nonplaceholder_content(vtext, "## Evidence"):
-                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty resolution evidence")
-            if not _has_nonplaceholder_content(vtext, "## Test Verification"):
-                issues.append(f"READY_FOR_VERIFICATION ticket {p.name} has empty test verification")
-        if status == "PASS":
-            vtext = p.read_text(encoding="utf-8", errors="replace")
-            if ticket_path:
-                ok, missing = _pass_ready(ticket_path, vtext, [])
-                if not ok:
-                    issues.append(f"PASS ticket {p.name} lacks required evidence: {'; '.join(missing)}")
-            if not v.get("verified_commit"):
-                issues.append(f"PASS ticket {p.name} has empty Verified Commit")
-        if status in {"WONTFIX", "INVALID", "BLOCKED"}:
-            vtext = p.read_text(encoding="utf-8", errors="replace")
-            if not _has_nonplaceholder_content(vtext, "## Verdict"):
-                issues.append(f"{status} ticket {p.name} lacks rationale in Verdict")
-
-    records = load_records()
-    ids = {r["id"] for r in records}
+    try:
+        records = load_records()
+    except AuditError as exc:
+        issues.append(exc.message)
+        return list(dict.fromkeys(issues)), warnings
+    issues.extend(_dependency_issues(records))
     status_by_id = {r["id"]: r.get("status", "") for r in records}
-    graph: dict[str, set[str]] = {r["id"]: set(r.get("depends_on", [])) for r in records}
-    for r in records:
-        for dep in r.get("depends_on", []):
-            if dep not in ids:
-                issues.append(f"Ticket {r['id']} depends on missing ticket {dep}")
-            elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "WONTFIX", "INVALID"}:
-                issues.append(f"Ticket {r['id']} depends on non-usable ticket {dep} ({status_by_id.get(dep)})")
+    for record in records:
+        for dep in record.get("depends_on", []):
+            if status_by_id.get(dep) in {"FAIL", "BLOCKED", "WONTFIX", "INVALID"}:
+                warnings.append(f"Ticket {record['id']} waits for {dep} ({status_by_id[dep]}); only PASS unblocks it")
 
-    for blocker, blocked in _one_sided_dependency_edges():
-        issues.append(
-            f"Dependency {blocker} blocks {blocked} is not recorded on both tickets; "
-            "use `doctor --fix` to synchronize ticket fields"
-        )
-
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def visit(node: str, stack: list[str]) -> None:
-        if node in visiting:
-            cycle = " -> ".join(stack + [node])
-            issues.append(f"Dependency cycle detected: {cycle}")
-            return
-        if node in visited:
-            return
-        visiting.add(node)
-        for dep in graph.get(node, set()):
-            visit(dep, stack + [node])
-        visiting.remove(node)
-        visited.add(node)
-
-    for node in graph:
-        visit(node, [])
     return issues, warnings
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
     if args.fix:
         fixed: list[str] = []
-        if not TICKETS_DIR.is_dir() or not VERIF_DIR.is_dir():
-            result = _initialize_audit_tree(write_docs=True)
-            if result["created_dirs"] or result["created_files"]:
-                fixed.append("initialized missing audit workflow directories/files")
-        for p in list(_all_ticket_files()):
-            num = _ticket_num(p.name)
-            if num is not None and _verif_for(num, p) is None:
-                VERIF_DIR.mkdir(parents=True, exist_ok=True)
-                _write_stub_verification(VERIF_DIR / p.name, num, p)
-                fixed.append(f"created verification stub for {num:03d}")
-        edges = _one_sided_dependency_edges()
-        if edges:
-            with _create_lock_cm():
-                for blocker, blocked in edges:
-                    _mutate_dependencies(blocker, depends_on=[], blocks=[blocked], remove=False)
-                    fixed.append(f"recorded both sides of dependency {blocker} blocks {blocked}")
+        with _create_lock_cm():
+            if not TICKETS_DIR.is_dir() or not VERIF_DIR.is_dir():
+                result = _initialize_audit_tree(write_docs=True)
+                if result["created_dirs"] or result["created_files"]:
+                    fixed.append("initialized missing audit workflow directories/files")
+            pending: dict[Path, str] = {}
+            for path in _all_ticket_files():
+                num, category, _ = parse_ticket_filename(path.name)
+                if num is None or num < 1 or category not in VALID_CATEGORIES:
+                    continue
+                try:
+                    ticket = _ticket_for(num)
+                    verification = _verif_for(num, ticket)
+                except AuditError:
+                    continue  # Ambiguous records require explicit human repair, not another copy.
+                if verification is None:
+                    t = parse_ticket(path)
+                    state = "OPEN" if _ticket_ready_for_open(t["_text"])[0] else "DRAFT"
+                    pending[VERIF_DIR / path.name] = _verification_text(num, t["category"], t["severity"], t["slug"], state)
+                    fixed.append(f"created verification stub for {num:03d}")
+            for blocker, blocked in _one_sided_dependency_edges():
+                try:
+                    left = _ticket_for(_parse_id(blocker))
+                    right = _ticket_for(_parse_id(blocked))
+                    if left is None or right is None:
+                        continue
+                    for path, label, value in ((left, "Blocks", blocked), (right, "Depends On", blocker)):
+                        text = pending[path] if path in pending else path.read_text(encoding="utf-8")
+                        depends, blocks = set(_split_ids(_field(text, "Depends On"))), set(_split_ids(_field(text, "Blocks")))
+                        (depends if label == "Depends On" else blocks).add(value)
+                        pending[path] = _updated_dependency_text(depends, blocks, text)
+                except AuditError:
+                    continue
+                fixed.append(f"recorded both sides of dependency {blocker} blocks {blocked}")
+            _write_documents(pending)
         for item in fixed:
             print(f"FIXED: {item}")
 
@@ -1827,9 +2026,12 @@ def cmd_dedupe(args: argparse.Namespace) -> None:
     if len(ticket_paths) < 2:
         print("Need at least 2 tickets to dedupe.")
         return
+    states = {record["id"]: record.get("status") for record in load_records()}
     tickets = []
     for path in ticket_paths:
         t = parse_ticket(path)
+        if states.get(t["id"]) in {"INVALID", "WONTFIX"}:
+            continue
         t["_evidence_first"] = _first_evidence_line(t["_text"])
         tickets.append(t)
     candidates = []
@@ -1857,13 +2059,24 @@ def cmd_dedupe(args: argparse.Namespace) -> None:
     if args.apply:
         if not args.actor:
             raise AuditError("--as is required when --apply modifies ticket status", 2)
-        for c in candidates:
-            result = _batch_transition([str(c["other"])], "INVALID", args.actor, verdict=f"DUPLICATE: similar to {c['target']:03d}", reason="duplicate")
+        _require_actor(args.actor, "INVALID")
+        planned: dict[int, int] = {}
+        for candidate in sorted(candidates, key=lambda c: (c["other"], c["target"], -c["score"])):
+            duplicate, target = candidate["other"], candidate["target"]
+            if duplicate in planned or target in planned:
+                continue
+            if "INVALID" in ALLOWED_TRANSITIONS.get(states.get(f"{duplicate:03d}", ""), set()):
+                planned[duplicate] = target
+        for duplicate, target in planned.items():
+            result = _batch_transition(
+                [str(duplicate)], "INVALID", args.actor,
+                verdict=f"Duplicate of {target:03d}: same module and matching finding",
+            )
             if result.failed:
-                for item in result.failed:
-                    print(f"{item.id}: ERROR — {item.error}", file=sys.stderr)
+                _render_batch_result(result, False, "closed")
                 sys.exit(result.exit_code())
-        print(f"Marked {len(candidates)} ticket(s) as INVALID (duplicate).")
+        print(f"Marked {len(planned)} ticket(s) as INVALID (duplicate).")
+
     else:
         print("| Candidate | Similar To | Score | Reason | Recommendation |")
         print("|---|---|---|---|---|")
@@ -1874,7 +2087,24 @@ def cmd_dedupe(args: argparse.Namespace) -> None:
 
 def cmd_baseline(args: argparse.Namespace) -> None:
     baselines_dir = ROOT / "audit" / "baselines"
-    baselines_dir.mkdir(parents=True, exist_ok=True)
+    if args.tag is not None and (
+        not args.tag.strip() or args.tag in {".", ".."} or "/" in args.tag or "\\" in args.tag
+    ):
+        raise AuditError("--tag must be a nonempty baseline name, not a path", 2)
+
+    def read_baseline(path: Path) -> dict[str, Any]:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or not isinstance(data.get("tickets"), dict):
+                raise ValueError("expected an object with a tickets mapping")
+            if not isinstance(data.get("created_at"), str):
+                raise ValueError("created_at is missing")
+            datetime.fromisoformat(data["created_at"])
+            if any(not isinstance(record, dict) for record in data["tickets"].values()):
+                raise ValueError("each ticket snapshot must be an object")
+            return data
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise AuditError(f"invalid baseline {path.name}: {exc}", 1) from exc
 
     # One field set drives both persisted snapshots and semantic comparison.
     # It includes every ticket field used by triage and resolution scheduling.
@@ -1900,9 +2130,12 @@ def cmd_baseline(args: argparse.Namespace) -> None:
 
     if args.action == "create":
         snap = snapshot()
-        name = args.tag or datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        name = args.tag if args.tag is not None else datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")
         path = baselines_dir / f"{name}.json"
-        path.write_text(json.dumps({"created_at": datetime.now().isoformat(), "tickets": snap}, ensure_ascii=False, indent=2), encoding="utf-8")
+        if path.exists():
+            raise AuditError(f"baseline {name!r} already exists; choose a new --tag", 1)
+        baselines_dir.mkdir(parents=True, exist_ok=True)
+        _write_documents({path: json.dumps({"created_at": datetime.now().isoformat(), "tickets": snap}, ensure_ascii=False, indent=2)})
         print(f"Baseline saved: {_rel(path)}")
         print(f"Tickets: {len(snap)}")
         return
@@ -1910,13 +2143,16 @@ def cmd_baseline(args: argparse.Namespace) -> None:
     if args.tag:
         baseline_path = baselines_dir / f"{args.tag}.json"
     else:
-        baselines = sorted(baselines_dir.glob("*.json"))
+        baselines = list(baselines_dir.glob("*.json"))
         if not baselines:
             raise AuditError("No baselines found. Run 'audit baseline create' first.", 1)
-        baseline_path = baselines[-1]
+        baseline_path = max(
+            baselines,
+            key=lambda path: (datetime.fromisoformat(read_baseline(path)["created_at"]).timestamp(), path.name),
+        )
     if not baseline_path.exists():
         raise AuditError(f"Baseline not found: {baseline_path}", 1)
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline = read_baseline(baseline_path)
     old = baseline.get("tickets", {})
     current = snapshot()
     new_ids = set(current) - set(old)
@@ -1994,7 +2230,7 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
         if args.fix_group is not None:
             group = "" if args.fix_group.lower() == "none" else args.fix_group
             text = _set_ticket_field(text, "Phase", "Fix Group", group)
-        path.write_text(text, encoding="utf-8")
+        _write_documents({path: text})
     print(f"{num:03d}: triage metadata updated ({_rel(path)})")
 
 
@@ -2008,46 +2244,60 @@ def _updated_dependency_text(depends: set[str], blocks: set[str], content: str) 
     return _set_ticket_field(content, "Depends On", "Blocks", _join_ids(sorted(blocks)))
 
 
-def _mutate_dependencies(ticket_id: str, *, depends_on: Sequence[str], blocks: Sequence[str], remove: bool) -> list[Path]:
+def _mutate_dependencies(
+    ticket_id: str, *, depends_on: Sequence[str], blocks: Sequence[str], remove: bool,
+    pending: Optional[dict[Path, str]] = None,
+) -> list[Path]:
     num = _parse_id(ticket_id)
-    source_path = _ticket_for(num)
-    if not source_path:
+    pending = dict(pending or {})
+    source_path = next(
+        (p for p in pending if p.parent == TICKETS_DIR and _ticket_num(p.name) == num),
+        None,
+    ) or _ticket_for(num)
+    if source_path is None:
         raise AuditError(f"ticket {num:03d} not found", 1)
     source_id = f"{num:03d}"
     dep_ids = {_canonical_ticket_id(x) for x in depends_on}
     block_ids = {_canonical_ticket_id(x) for x in blocks}
-    if source_id in dep_ids or source_id in block_ids:
+    if not remove and (source_id in dep_ids or source_id in block_ids):
         raise AuditError("a ticket cannot depend on or block itself", 2)
-
-    refs: dict[str, Path] = {}
-    for ref in sorted(dep_ids | block_ids):
+    paths = {source_id: source_path}
+    for ref in sorted((dep_ids | block_ids) - {source_id}, key=int):
         ref_path = _ticket_for(_parse_id(ref))
-        if not ref_path:
+        if ref_path is None:
+            if remove:
+                continue  # A dangling reference must be removable without recreating its target.
             raise AuditError(f"ticket {ref} not found", 1)
-        refs[ref] = ref_path
-
-    paths = {source_id: source_path, **refs}
-    state: dict[str, tuple[set[str], set[str], str]] = {tid: _dependency_state(path) for tid, path in paths.items()}
+        paths[ref] = ref_path
+    state = {}
+    for tid, path in paths.items():
+        text = pending[path] if path in pending else path.read_text(encoding="utf-8")
+        state[tid] = (
+            set(_split_ids(_field(text, "Depends On"))),
+            set(_split_ids(_field(text, "Blocks"))),
+            text,
+        )
     source_depends, source_blocks, _ = state[source_id]
     op = set.discard if remove else set.add
-
     for dep in dep_ids:
         op(source_depends, dep)
-        dep_depends, dep_blocks, _ = state[dep]
-        op(dep_blocks, source_id)
+        if dep in state:
+            op(state[dep][1], source_id)
     for blocked in block_ids:
         op(source_blocks, blocked)
-        blocked_depends, blocked_blocks, _ = state[blocked]
-        op(blocked_depends, source_id)
-
-    # Validate every record before writing any of the linked ticket files.
-    updates = {
-        path: _updated_dependency_text(*state[tid])
-        for tid, path in paths.items()
-    }
-    for path, content in updates.items():
-        path.write_text(content, encoding="utf-8")
-    return list(paths.values())
+        if blocked in state:
+            op(state[blocked][0], source_id)
+    updates = {**pending, **{
+        path: _updated_dependency_text(*state[tid]) for tid, path in paths.items()
+    }}
+    if not remove:
+        prospective_paths = set(_all_ticket_files()) | {p for p in updates if p.parent == TICKETS_DIR}
+        prospective = [parse_ticket(p, updates.get(p)) for p in sorted(prospective_paths)]
+        issues = _dependency_issues(prospective)
+        if issues:
+            raise AuditError("dependency update rejected: " + "; ".join(issues), 2)
+    _write_documents(updates)
+    return list(updates)
 
 
 def cmd_deps_add(args: argparse.Namespace) -> None:
@@ -2222,55 +2472,63 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    read_only = args.command in {"list", "show", "status", "summary", "next", "export", None}
+    read_only |= args.command == "doctor" and not args.fix
+    read_only |= args.command == "baseline" and args.action == "compare"
+    read_only |= args.command == "dedupe" and not args.apply
     try:
-        if args.command == "init":
-            cmd_init(args)
-        elif args.command == "create":
-            cmd_create(args)
-        elif args.command == "list":
-            cmd_list(args)
-        elif args.command == "show":
-            cmd_show(args)
-        elif args.command == "status":
-            cmd_status(args)
-        elif args.command == "summary":
-            cmd_summary(args)
-        elif args.command == "update":
-            cmd_update(args)
-        elif args.command == "open":
-            cmd_open(args)
-        elif args.command == "resolve":
-            cmd_resolve(args)
-        elif args.command == "verify":
-            cmd_verify(args)
-        elif args.command == "next":
-            cmd_next(args)
-        elif args.command == "doctor":
-            cmd_doctor(args)
-        elif args.command == "export":
-            cmd_export(args)
-        elif args.command == "close":
-            cmd_close(args)
-        elif args.command == "wontfix":
-            cmd_wontfix(args)
-        elif args.command == "reopen":
-            cmd_reopen(args)
-        elif args.command == "dedupe":
-            cmd_dedupe(args)
-        elif args.command == "baseline":
-            cmd_baseline(args)
-        elif args.command == "triage" and args.triage_command == "set":
-            cmd_triage_set(args)
-        elif args.command == "deps" and args.deps_command == "add":
-            cmd_deps_add(args)
-        elif args.command == "deps" and args.deps_command == "remove":
-            cmd_deps_remove(args)
-        else:
-            parser.print_help()
-            sys.exit(1)
+        with _create_lock_cm(read_only=read_only):
+            if args.command == "init":
+                cmd_init(args)
+            elif args.command == "create":
+                cmd_create(args)
+            elif args.command == "list":
+                cmd_list(args)
+            elif args.command == "show":
+                cmd_show(args)
+            elif args.command == "status":
+                cmd_status(args)
+            elif args.command == "summary":
+                cmd_summary(args)
+            elif args.command == "update":
+                cmd_update(args)
+            elif args.command == "open":
+                cmd_open(args)
+            elif args.command == "resolve":
+                cmd_resolve(args)
+            elif args.command == "verify":
+                cmd_verify(args)
+            elif args.command == "next":
+                cmd_next(args)
+            elif args.command == "doctor":
+                cmd_doctor(args)
+            elif args.command == "export":
+                cmd_export(args)
+            elif args.command == "close":
+                cmd_close(args)
+            elif args.command == "wontfix":
+                cmd_wontfix(args)
+            elif args.command == "reopen":
+                cmd_reopen(args)
+            elif args.command == "dedupe":
+                cmd_dedupe(args)
+            elif args.command == "baseline":
+                cmd_baseline(args)
+            elif args.command == "triage" and args.triage_command == "set":
+                cmd_triage_set(args)
+            elif args.command == "deps" and args.deps_command == "add":
+                cmd_deps_add(args)
+            elif args.command == "deps" and args.deps_command == "remove":
+                cmd_deps_remove(args)
+            else:
+                parser.print_help()
+                sys.exit(1)
     except AuditError as exc:
         print(f"Error: {exc.message}", file=sys.stderr)
         sys.exit(exc.code)
+    except (OSError, UnicodeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Optional human-readable projection of ticket dependencies. This file is not
 consumed by the CLI. Use `deps add/remove` to write both ticket headers first.
 
-## Edges (machine-readable)
+## Recorded Edges
 
 ```text
 # format: <blocking-ticket> blocks <blocked-ticket>

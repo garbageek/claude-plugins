@@ -1,8 +1,8 @@
 # Verification Detail Template
 
-Copy this template when verifying individual tickets.
+Reference schema only. Create/update verification records through the CLI; never overwrite an existing record or its history with this template.
 
-```markdown
+````markdown
 # Verification: {ticket-id}
 
 **Original Ticket:** `audit/tickets/{ticket-id}.md`
@@ -67,7 +67,7 @@ Copy this template when verifying individual tickets.
 ## Verification History
 
 {The runtime archives previous proof here when a cycle or checked revision changes.}
-```
+````
 
 ## CLI Verification Commands
 
@@ -90,12 +90,14 @@ python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" ver
 
 ## Category-Specific Checklists
 
+Apply only checks required by the original criteria and authorized scope. Use manual reproducers or existing checks; do not author tests, expand scope, or restart services merely because a template mentions coverage.
+
 ### LOST Features
 
 ```markdown
 - [ ] Feature now exists in target codebase
 - [ ] Feature has equivalent functionality to source
-- [ ] Feature has test coverage
+- [ ] Feature passes the authorized functional checks
 - [ ] Feature is documented if originally documented
 ```
 
@@ -112,7 +114,7 @@ python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" ver
 ```markdown
 - [ ] Bug no longer reproducible
 - [ ] Fix does not introduce new bugs
-- [ ] Test added to prevent recurrence
+- [ ] Original failure and authorized recurrence checks pass
 - [ ] Edge cases from ticket addressed
 ```
 
@@ -122,7 +124,7 @@ python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" ver
 - [ ] Implementation complete; no placeholder path remains
 - [ ] All code paths implemented
 - [ ] Error handling in place
-- [ ] Tests cover the implementation
+- [ ] Authorized checks cover the required behavior
 ```
 
 ### TEST Coverage
@@ -139,7 +141,7 @@ python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" ver
 ```markdown
 - [ ] Configuration corrected
 - [ ] Example/default config updated where needed
-- [ ] Migration added if schema changed
+- [ ] Required schema-change handling is verified when explicitly in scope
 - [ ] Documentation updated
 ```
 

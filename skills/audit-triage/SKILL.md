@@ -1,6 +1,6 @@
 ---
 name: audit-triage
-description: "Use when existing audit tickets need prioritization, dependency ordering, or a roadmap. Triage must write executable metadata consumed by audit next; do not create tickets or edit implementation code."
+description: "Use when existing audit tickets need prioritization, dependency ordering, shared-file or shared-cause fix groups, or a roadmap. Do not create tickets or edit implementation code."
 tags: [audit, triage, priority, dependency, roadmap]
 ---
 
@@ -16,13 +16,12 @@ phases, and fix groups to ticket headers. A prose roadmap is optional;
 ## First move from empty context
 
 ```bash
-python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" summary
 ```
 
-If no tickets exist, report an empty queue. Do not create findings during triage.
+If the workspace is absent or no tickets exist, report that state without initializing it. Do not create findings during triage. Treat dependency-wait warnings separately from structural errors; a pending prerequisite is not a corrupt audit.
 
 ## Update executable metadata
 
@@ -38,7 +37,7 @@ Dependency semantics:
 003 blocks 001
 ```
 
-Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` until `003` is resolved.
+Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` until `003` reaches `PASS`.
 
 ## Scoring
 
@@ -74,7 +73,7 @@ Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --ro
 
 - read tickets and canonical export;
 - set triage metadata;
-- add dependency edges;
+- add or remove dependency edges;
 - write optional roadmap files under `audit/triage/`.
 
 ## Forbidden actions

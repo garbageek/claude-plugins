@@ -6,7 +6,7 @@ Write all decisions, scores, dependencies, and fix groups to tickets through the
 CLI *before* generating this document from `export --json`. The report is a
 snapshot for humans, not an input to `next`, `export`, or `doctor`.
 
-```markdown
+````markdown
 # Audit Triage
 
 **Date:** {YYYY-MM-DD}
@@ -30,7 +30,7 @@ snapshot for humans, not an input to `next`, `export`, or `doctor`.
 |--------|----------|----------|--------|--------|--------|----------|---------|-------|----------|-----------|
 | 001 | BUG | critical | src/parser.py | 5 | 2 | 20 | P0 | critical-path | FIX | parser |
 
-Impact must be >= severity minimum unless the downgrade is explicitly justified.
+Choose Impact from the actual user/data/release effect and explain non-obvious priority decisions. There is no separate runtime severity-to-Impact conversion.
 
 For every row, apply executable metadata:
 
@@ -126,4 +126,4 @@ python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" nex
 ```
 
 Expected next ticket: `{ticket-id}` because `{rationale}`.
-```
+````
