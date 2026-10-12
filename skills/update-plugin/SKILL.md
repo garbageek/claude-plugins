@@ -20,6 +20,10 @@ ordinary client upgrade request.
 For a local repository or supplied archive, inspect that exact source and selected
 plugin root. Preserve its instruction scope, target hosts, and destination. A ZIP
 request authorizes a revised artifact, not an account update or a GitHub push.
+For repository-target changes, follow the actual branch/PR process and configured
+CI version requirements. A requested PR uses a separate branch and the correct
+base; do not write directly to the default branch or merge without authorization.
+Passing package/CI checks does not establish that the updated skill loads in a host.
 
 For a backend update, discover the connected Plugin Creator tools and live schemas.
 Resolve the exact backend `plugin_id` from metadata/discovery; never derive or rewrite

@@ -81,6 +81,8 @@ Recommend **one** coherent approach. Make every consequential choice explicit en
 - **User-facing and operational behavior:** UI interactions and loading/empty/error/success states; CLI or service outcomes; permissions or trust boundaries; observability and resource lifecycle, **only where the change touches them**.
 - **Delivery safety:** migration order, deployment sequencing, reversibility, and recovery/rollback for stateful, destructive, or production-sensitive changes. Identify any irreversible step and its precondition.
 
+Trace incorrect results to the producer and authoritative state owner. When that source is editable within the authorized change boundary, plan a source-level fix rather than an invented downstream filter, validator, rejection state, or compensating rewrite. When the source is external or outside that boundary, plan the required consumer-side behavior within scope, identify any workaround as a mitigation rather than a root-cause fix, and preserve controls independently required by the accepted contract.
+
 Prefer the project's conventions, minimal dependencies, one authoritative state owner, and localized changes. Do not expand the task into unrelated refactoring, modernization, security programs, test infrastructure, observability initiatives, or platform redesign. **Incidental improvements are allowed when they directly improve the requested outcome, preserve user intent, and do not introduce unrelated scope.** Include their concrete edits and rationale in the plan, rather than slipping them into implementation unexamined.
 
 If the requested change must be built on code that is already defective, fragile, or contradictory (a broken invariant, a duplicated state owner, a workaround the new behavior would depend on), say so beside the affected decision and classify it. **Blocking:** the requested behavior cannot be delivered correctly on top of it, so its repair becomes the first task. **Non-blocking:** the change can proceed safely; state that the planned edit works around the defect, why that is acceptable now, and what the proper repair would be. Do not silently build on a known-broken foundation, and do not expand into repairing it when it is non-blocking.
@@ -88,6 +90,8 @@ If the requested change must be built on code that is already defective, fragile
 For difficult decisions, express **decision → evidence/reason → consequence** in a few sentences. Mention rejected approaches only to prevent a plausible mistake. Place invariants, constraints, and failure semantics next to the implementation choice they constrain; avoid stand-alone risk boilerplate and repeated assumptions. Never substitute “handle errors appropriately” or “follow best practices” for a necessary decision.
 
 ## 5. Turn the design into an executable sequence
+
+For repository changes, identify the existing branch/PR workflow, applicable manifest or release version increments, and configured CI checks that affect delivery. Include only the steps required by that workflow or explicitly requested; do not invent a new approval gate, release, or direct default-branch write when a PR is required.
 
 Use a **dependency-aware sequence of small, complete, meaningful changes**. Favor vertical slices that yield working, observable behavior over broad disconnected layers (“do backend,” “do frontend,” “integrate”). Define a shared contract or prerequisite first when a vertical slice cannot safely precede it. Avoid phases for a one-step change; group tasks into outcome-based phases only when scale warrants it.
 
