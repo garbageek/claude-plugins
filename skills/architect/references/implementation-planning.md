@@ -6,13 +6,17 @@ These are output profiles of [architect](../SKILL.md), not independent planning 
 
 Read the relevant approved objective/specification, current source, existing commands/interfaces, accepted constraints, and prior decisions. Use actual repository evidence when available, not just supplied prose. Mark missing facts as unknown and distinguish assumptions from approved requirements. Do not fabricate paths, APIs, commands, dates, assigned people, metrics, or completion status.
 
-Select **epic** for total scope and work packages, **milestone** for one implementable slice, or **roadmap** for sequencing and dependency decisions. Create only the requested artifact, in the requested destination/format. A planning request does not authorize implementation; an existing authorized implementation request does not become document editing just because a plan is attached.
+Select **change plan** for a source-grounded plan of a concrete change to existing code, **epic** for total scope and work packages, **milestone** for one implementable slice of an approved epic or roadmap, or **roadmap** for sequencing and dependency decisions. Create only the requested artifact, in the requested destination/format. A planning request does not authorize implementation; an existing authorized implementation request does not become document editing just because a plan is attached.
 
 Reuse existing IDs and trace each committed requirement to a component/interface, task/work package, and observable acceptance. A dependency states the actual input that must exist and what it blocks. Label proposed sequencing/preferences separately from confirmed technical dependencies. Shared files or state can prevent supposedly independent work from being parallel.
 
 Each meaningful unit states what changes, what must not change, its observable result, and how that result can be checked. Choose validation from the actual request/project contract; distinguish source inspection, structural checks, manual/runtime observations, and explicitly requested automated checks. Do not impose tests-first, new tests, or a generic hardening phase.
 
 Keep rollback/restore and continuation details proportionate to actual risk. Do not invent infrastructure, a rollout program, or operational artifacts for a text-only change. Keep one canonical explanation of shared constraints rather than repeating them in every section.
+
+## Change plan — source-grounded edits to existing code
+
+Use when the request is to plan a fix, feature, or refactor of an existing project at the level of files, symbols, and before-to-after edits, with or without an approved specification. Follow [the change plan profile](change-plan.md) for the investigation gate, task fields, runtime verification, review, delivery, and revision rules. It applies the shared rules above; it adds no tracking, approval, or status machinery.
 
 ## Epic — bounded objective and work packages
 
@@ -38,7 +42,7 @@ Prefer independently reviewable packages that leave the system coherent. Give on
 
 State objective, inputs/prerequisites, allowed scope, forbidden changes, current-versus-target behavior, and the accepted requirement/epic references. Specify necessary interfaces, error/failure behavior, data/compatibility constraints, and step order from actual dependencies.
 
-For each action name the target, exact change, input assumptions, expected visible outcome, and verification evidence. Do not use “implement the rest” or make the next agent rediscover known interfaces. Keep assumptions and blocking unknowns visible.
+For each action name the target, exact change, input assumptions, expected visible outcome, and verification evidence. When an action edits existing code, describe it with the [change plan](change-plan.md) task fields (Location, Current, Change, Why, Related changes, Depends on, Done when) at that profile's investigation depth. Do not use “implement the rest” or make the next agent rediscover known interfaces. Keep assumptions and blocking unknowns visible.
 
 Define observable exit criteria and what the following slice can rely on. For a risky change, include the actual stop/rollback/disable or continuation mechanism and what it cannot restore. A milestone may finish with known deferred scope only when the agreed slice excludes it; it must not call partial committed scope complete.
 
@@ -54,4 +58,4 @@ Separate a **decision gate** (what evidence permits continuing) from a **verific
 
 ## Final review
 
-Check source/requirement traceability, concrete targets and interfaces, real versus proposed dependencies, observable exits, preserved scope/compatibility, and exact remaining unknowns. Match the requested artifact and granularity; no fixed 15/18-section skeleton and no automatic epic + milestone + roadmap bundle. A complete-looking document with blocking unknowns is not implementation-ready.
+Check source/requirement traceability, concrete targets and interfaces, real versus proposed dependencies, observable exits, preserved scope/compatibility, and exact remaining unknowns. Match the requested artifact and granularity; no fixed 15/18-section skeleton and no automatic change plan + epic + milestone + roadmap bundle. A complete-looking document with blocking unknowns is not implementation-ready.

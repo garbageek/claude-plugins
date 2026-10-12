@@ -1,6 +1,6 @@
 ---
 name: architect
-description: Design software architecture SPECs, create/update/review ADRs, review or update designs and implementation plans, compare system-design trade-offs, and carry out authorized architecture-scoped implementation using available host capabilities. Use for requirements-to-contracts design, contractor handoff, readiness reviews, evidence-backed technology decisions, AI/agent component architecture, and resuming accepted work. Do not turn unrelated factual questions, translations, mechanical edits, or general prompt writing into an architecture session.
+description: Design software architecture SPECs, create/update/review ADRs, review or update designs, create, review, or update implementation plans including source-grounded change plans for existing code, compare system-design trade-offs, and carry out authorized architecture-scoped implementation using available host capabilities. Use for requirements-to-contracts design, planning a change to an existing codebase before implementing it, contractor handoff, readiness reviews, evidence-backed technology decisions, AI/agent component architecture, and resuming accepted work. Do not turn unrelated factual questions, translations, mechanical edits, or general prompt writing into an architecture session.
 ---
 
 # System Architect
@@ -20,8 +20,8 @@ Read the relevant source before drawing conclusions. Distinguish observed source
 | Create a SPEC step by step, or create one without a stated delivery mode | Interactive SPEC: the current section and at most two useful questions | `references/spec-operating-protocol.md`, “Session execution” and current section |
 | Complete/full SPEC, contractor-ready document now, or no clarification pauses | Full SPEC: the entire requested document with labeled assumptions | `references/spec-operating-protocol.md`; `references/templates.md` |
 | Review/critique a design, plan, repository, or claimed readiness | Review: evidence-backed findings and exact corrections; no unsolicited rewrite | `references/spec-operating-protocol.md`, “Source intake” and “Review and update”; `references/checklists.md` |
-| Explicitly edit/update/merge the SPEC or plan itself | Update: edit the actual artifact and propagate affected changes | Same review references; relevant template only when needed |
-| Create an epic, milestone, or roadmap | Requested planning profile only; no automatic artifact bundle or execution | [Implementation planning](references/implementation-planning.md) |
+| Explicitly edit/update/merge the SPEC or plan itself | Update: edit the actual artifact and propagate affected changes | Same review references; relevant template only when needed; `references/change-plan.md`, section 9, for a change plan |
+| Create a change plan, epic, milestone, or roadmap | Requested planning profile only; no automatic artifact bundle or execution | [Implementation planning](references/implementation-planning.md); [change plan](references/change-plan.md) for a change to existing code |
 | Assess or recover damage after suspect project changes | Sibling recovery route; assessment read-only unless actions are authorized | [Recover](../recover/SKILL.md) |
 | Create, update, or review an ADR | Create/update the requested record; review-only returns findings, not an unsolicited rewrite. Preserve decision status and repository conventions | `references/design-gate.md`, “ADR lifecycle”; `references/templates.md` |
 | Decide between architectures, discuss a design, or brainstorm | Design decision: recommendation, real alternatives, constraints, consequences | `references/design-gate.md` |
@@ -88,7 +88,8 @@ All paths below are relative to this skill directory. Read only the sections nee
 | `references/decision-evidence.md` | Targeted architecture research, claim support, comparable options, conflicts, and bounded evidence repair; only when a decision needs them |
 | `references/templates.md` | Markdown SPEC, selected multi-file specification profiles, ADR, Design Brief, traceability, review, handoff, contracts, and PlantUML |
 | `assets/spec-template.adoc` | Copy/adapt a real AsciiDoc SPEC; the same content contract as Markdown |
-| `references/implementation-planning.md` | Optional epic, milestone, and roadmap profiles; only the requested planning artifact |
+| `references/implementation-planning.md` | Optional change plan, epic, milestone, and roadmap profiles; only the requested planning artifact |
+| `references/change-plan.md` | Change plan profile: investigation gate, task fields, runtime verification, review, delivery, and revision |
 | `../recover/SKILL.md` | Evidence-based damaged-project recovery; distinct from normal session continuation |
 | `references/implementation-patterns.md` | Conditional style choices, ownership, jobs, retries, integrations, operations, migrations, scaling, CLI contracts, and AI/agent contracts |
 | `references/examples/saas-project-portal.md` | One internally coherent worked SPEC, only when requested or needed to resolve an output ambiguity |
