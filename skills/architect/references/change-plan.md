@@ -143,7 +143,9 @@ For a large, tightly coupled, or high-consequence plan, use an independent **rea
 
 ## 8. Deliver one canonical Markdown plan
 
-For a planning-only request, deliver **one complete, implementation-ready Markdown document**, in English unless another language is requested. The only mandatory metadata is the first heading: `# <Descriptive Title> vN`.
+For a planning-only request, deliver **one complete, implementation-ready Markdown document**. A new plan is in English unless another language is requested; a revision keeps the existing plan's language. The only mandatory metadata is the first heading: `# <Descriptive Title> vN`.
+
+A plan format the user requests or the project mandates takes precedence, and a revision preserves the existing plan's headings, IDs, and format, as the architect's working rules require. The metadata and heading restrictions below are defaults for a new plan with no binding format.
 
 - Use the **fewest sections** that make the work executable. Useful sections when warranted: **Expected Behavior**, **Technical Decisions**, **Data and Interface Changes**, **Implementation**, and **Runtime Verification**. A small change may need only a task sequence.
 - Put current → target behavior, verified file/symbol locations, concrete code changes, rationale, related consumers, protected invariants, and implementation steps where the implementer will use them; avoid duplicating the same requirement under several headings.
