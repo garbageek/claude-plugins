@@ -6,9 +6,6 @@
 - Validate dependency graphs before writes, enforce explicit resolution eligibility, stage linked file updates with rollback on I/O failure, and fail closed on local lock errors.
 - Preserve per-item results on Git failures, isolate opted-in metadata commits, make duplicate closure repeatable, and protect baseline snapshots from overwrite or lexical misselection.
 - Validate MCP input before side effects, preserve explicit empty values, and report malformed protocol input. Align audit skill instructions and reference templates with the runtime.
-
-## Unreleased
-
 - Use the latest criterion result for PASS and archive stale proof when a new resolution cycle starts, a ticket reopens, or the verified revision changes. Preserve partial checks on the same revision and idempotent READY refreshes.
 - Use ticket headers as the sole active triage/dependency state; remove report fallbacks and obsolete verification field aliases. Suggest same-file and explicitly grouped ready FIX tickets without changing priority or dependency gates.
 - Require fresh proof after REGRESS, reject contradictory criteria, recalculate partial triage score changes, and avoid empty OPEN snapshots in verification history.

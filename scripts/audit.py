@@ -1412,7 +1412,7 @@ def _apply_transition_to_file(
         new_resolution = target_status == "READY_FOR_VERIFICATION" and (
             current != target_status or bool(fix_commit and fix_commit != _field(text, "Fix Commit"))
         )
-        if new_resolution:
+        if target_status == "READY_FOR_VERIFICATION":
             _check_resolution_eligibility(num)
         reopened = target_status == "OPEN" and current != "OPEN"
         regressed = target_status == "REGRESS" and current == "PASS"
