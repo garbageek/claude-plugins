@@ -1,6 +1,9 @@
 # Fix Roadmap
 
-This roadmap is a human-readable projection of executable triage metadata. Every listed ticket should already be updated with `python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" triage set`, and dependency edges should be updated with `python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" deps add` or `audit/triage/dependencies.md`.
+This roadmap is a human-readable projection of executable ticket metadata.
+Apply triage and `Fix Group` through `triage set`, and dependency edges through
+`deps add/remove` before generating it. Group shared-file/shared-cause tickets
+for one edit session where dependencies allow; roadmap edits never change the queue.
 
 ## Phase 1: Critical Path
 

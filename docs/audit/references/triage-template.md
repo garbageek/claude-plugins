@@ -2,6 +2,10 @@
 
 Write to `audit/triage/triage-{date}.md`.
 
+Write all decisions, scores, dependencies, and fix groups to tickets through the
+CLI *before* generating this document from `export --json`. The report is a
+snapshot for humans, not an input to `next`, `export`, or `doctor`.
+
 ```markdown
 # Audit Triage
 
@@ -22,21 +26,26 @@ Write to `audit/triage/triage-{date}.md`.
 
 ## Priority Matrix
 
-| Ticket | Category | Severity | Impact | Effort | Priority | P-level | Phase | Decision |
-|--------|----------|----------|--------|--------|----------|---------|-------|----------|
-| 001    | BUG      | critical | 5      | 2      | 20       | P0      | critical-path | FIX |
+| Ticket | Category | Severity | Module | Impact | Effort | Priority | P-level | Phase | Decision | Fix Group |
+|--------|----------|----------|--------|--------|--------|----------|---------|-------|----------|-----------|
+| 001 | BUG | critical | src/parser.py | 5 | 2 | 20 | P0 | critical-path | FIX | parser |
 
 Impact must be >= severity minimum unless the downgrade is explicitly justified.
 
 For every row, apply executable metadata:
 
 ```bash
-python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
+python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path --fix-group parser
 ```
 
 ---
 
 ## Recommended Order
+
+Group tickets touching the same files or shared root cause into one edit
+session when compatible with priority and dependencies. Set a shared `Fix Group`
+on each grouped ticket; use separate groups for unrelated edits even if they
+share a module. `next --for resolution --json` reports eligible related tickets.
 
 ### Phase 1: Critical Path
 Must fix before release.

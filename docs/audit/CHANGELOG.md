@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Use the latest criterion result for PASS and archive stale proof when a new resolution cycle starts, a ticket reopens, or the verified revision changes. Preserve partial checks on the same revision and idempotent READY refreshes.
+- Use ticket headers as the sole active triage/dependency state; remove report fallbacks and obsolete verification field aliases. Suggest same-file and explicitly grouped ready FIX tickets without changing priority or dependency gates.
+- Require fresh proof after REGRESS, reject contradictory criteria, recalculate partial triage score changes, and avoid empty OPEN snapshots in verification history.
+- Choose discovery mode before initialization; Investigate remains read-only in the shared skill and Claude agent.
+
 ## 1.4.1
 
 - Block full Claude `Write` of managed audit records; inspect actual `Edit`/`MultiEdit` substitutions for changes to protected Status fields, regardless of status value, without blocking evidence text.

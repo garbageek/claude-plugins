@@ -160,12 +160,10 @@ def parse_doctor_output(stdout: Any, stderr: str = "") -> dict[str, Any]:
     }
 
 
-def run_doctor(args: dict[str, Any], *, fix: bool = False, strict: bool = False) -> dict[str, Any]:
+def run_doctor(args: dict[str, Any], *, fix: bool = False) -> dict[str, Any]:
     cmd = ["doctor"]
     if fix:
         cmd.append("--fix")
-    if strict:
-        cmd.append("--strict")
 
     first = run_audit(args, *cmd, json_mode=False)
     first_parsed = parse_doctor_output(first.get("stdout"), str(first.get("stderr") or ""))
@@ -181,8 +179,6 @@ def run_doctor(args: dict[str, Any], *, fix: bool = False, strict: bool = False)
         }
 
     recheck_cmd = ["doctor"]
-    if strict:
-        recheck_cmd.append("--strict")
     recheck = run_audit(args, *recheck_cmd, json_mode=False)
     recheck_parsed = parse_doctor_output(recheck.get("stdout"), str(recheck.get("stderr") or ""))
 
@@ -233,7 +229,7 @@ def tools() -> list[dict[str, Any]]:
         {
             "name": "audit_doctor",
             "description": "Check audit workflow health. With fix=true, apply supported fixes and return a fresh re-check result.",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "fix": {"type": "boolean"}, "strict": {"type": "boolean"}}, "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "fix": {"type": "boolean"}}, "additionalProperties": False},
         },
         {
             "name": "audit_summary",
@@ -273,7 +269,7 @@ def tools() -> list[dict[str, Any]]:
         {
             "name": "audit_triage_set",
             "description": "Set executable triage metadata for one ticket.",
-            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "impact": {"type": "integer", "minimum": 1, "maximum": 5}, "effort": {"type": "integer", "minimum": 1, "maximum": 5}, "p_level": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]}, "decision": {"type": "string", "enum": ["FIX", "DEFER", "WONTFIX", "DUPLICATE"]}, "phase": str_schema}, "required": ["id"], "additionalProperties": False},
+            "inputSchema": {"type": "object", "properties": {**root_prop, "id": id_schema, "impact": {"type": "integer", "minimum": 1, "maximum": 5}, "effort": {"type": "integer", "minimum": 1, "maximum": 5}, "p_level": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]}, "decision": {"type": "string", "enum": ["FIX", "DEFER", "WONTFIX", "DUPLICATE"]}, "phase": str_schema, "fix_group": str_schema}, "required": ["id"], "additionalProperties": False},
         },
         {
             "name": "audit_dependency_add",
@@ -309,7 +305,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "audit_init":
         return audit_tool_result(run_audit(args, "init"))
     if name == "audit_doctor":
-        return audit_tool_result(run_doctor(args, fix=bool(args.get("fix")), strict=bool(args.get("strict"))))
+        return audit_tool_result(run_doctor(args, fix=bool(args.get("fix"))))
     if name == "audit_summary":
         return audit_tool_result(run_audit(args, "summary"))
     if name == "audit_next":
@@ -383,6 +379,7 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         optional_arg(cmd, "--p-level", args.get("p_level"))
         optional_arg(cmd, "--decision", args.get("decision"))
         optional_arg(cmd, "--phase", args.get("phase"))
+        optional_arg(cmd, "--fix-group", args.get("fix_group"))
         return audit_tool_result(run_audit(args, *cmd, json_mode=False))
     if name in {"audit_dependency_add", "audit_dependency_remove"}:
         action = "add" if name.endswith("_add") else "remove"

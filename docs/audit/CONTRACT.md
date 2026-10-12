@@ -175,6 +175,25 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" re
 - evidence/test record
 - passing result for every acceptance criterion (`AC1`, `AC2`, ...)
 
+Only the latest explicit result for each criterion in the active verification
+sections counts. A later `fail`, `partial`, `blocked`, or `regress` supersedes an
+earlier `pass`. If active Criteria Results and Verification Checklist disagree,
+PASS is blocked until an explicit criterion result resolves the conflict. The CLI
+retains superseded checklist lines in Criteria Results before appending that result.
+
+A new resolution cycle, reopening to `OPEN`, or changing `Verified Commit`
+archives the previous criteria, checklist, verification evidence, test record,
+verdict, and verifier metadata under `## Verification History`. Archived proof
+does not satisfy current gates. A new resolution cycle also archives resolution
+evidence and current state; supply fresh resolution evidence and a test record.
+Reopening clears resolution metadata. Moving from PASS to REGRESS archives the
+previously passing proof; a subsequent PASS needs fresh verification evidence.
+Refreshing READY on the same Fix Commit
+keeps the active proof. Partial checks on the same Verified Commit can accumulate;
+checks without a recorded revision cannot be carried to a newly supplied revision.
+The runtime validates the prepared record before writing it, so a rejected
+transition leaves the verification file unchanged.
+
 Use:
 
 ```bash
@@ -221,9 +240,9 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" ve
 ## Test Verification
 
 ## Verdict
-```
 
-Backward compatibility: parsers may read legacy `**Status:**`, `**Date:**`, and `**Commit Verified At:**`, but new writes must use the canonical fields above.
+## Verification History
+```
 
 Record metadata occupies the header before the first `##` section. Body evidence,
 fenced examples and status history do not provide missing header values. Read and
@@ -265,9 +284,29 @@ Tickets also carry machine-readable fields:
 **P-level:** `P0|P1|P2|P3`
 **Decision:** `FIX|DEFER|WONTFIX|DUPLICATE`
 **Phase:** `critical-path|quick-wins|feature-parity|backlog|...`
+**Fix Group:** `optional-shared-edit-slug`
 ```
 
-`audit_next(for_role="resolution")` or the CLI equivalent consumes this metadata plus dependency edges.
+The ticket header is the only active triage state. New tickets start with
+`Decision: FIX`, not a new lifecycle status. Use `triage set` to change the
+decision, priority, phase, or optional `Fix Group`; use `deps add/remove` to
+change dependencies. `triage-*.md`, roadmaps and dependency diagrams are
+read-only projections of exported state. Editing those files never changes
+`next`, `export`, or `doctor`.
+
+Updating either Impact or Effort recalculates Priority and P-level when both
+ratings are present. With only one rating, Priority remains empty and a manually
+assigned P-level is preserved. Explicit `--p-level` overrides the calculated level.
+Missing ticket header fields are inserted by `triage set` and `deps add/remove`.
+`doctor` detects missing/invalid decisions and inconsistent priority scores.
+The resolution queue includes only `Decision: FIX` tickets with satisfied
+dependencies. Verification can finish ready tickets regardless of Decision.
+
+`next --for resolution` returns the highest-priority ready FIX ticket plus
+`related_tickets` for other ready FIX tickets with the same `Fix Group`, or the
+same source file and compatible phase. These are suggestions for a shared edit
+session, not an instruction to resolve extra tickets automatically. Dependencies
+and explicit DEFER/WONTFIX/DUPLICATE decisions always take precedence.
 
 ---
 
@@ -287,9 +326,9 @@ Equivalent ticket field:
 **Depends On:** `003`
 ```
 
-`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `INVALID`).
+`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `WONTFIX`, `INVALID`). Only a PASS dependency unblocks a dependent ticket.
 
-The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. Readers treat an edge recorded on only one side as a full edge. `audit_doctor` warns about such edges, and `audit_doctor(fix=true)` writes the missing side.
+The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. `audit_doctor` reports one-sided edges as inconsistent state, and `audit_doctor(fix=true)` synchronizes ticket headers. No dependency report is consulted for scheduling.
 
 ---
 

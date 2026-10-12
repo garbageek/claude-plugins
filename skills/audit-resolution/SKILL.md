@@ -10,6 +10,12 @@ Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-
 
 Purpose: fix one unblocked audit ticket, record implementation evidence, and hand off to independent verification.
 
+If the user authorized a fix group or batch, inspect `related_tickets` from
+`next --for resolution --json` and the full acceptance criteria of each ticket.
+Resolve compatible shared-file/root-cause problems through one coherent source
+change, then record resolution evidence on each addressed ticket. Do not treat
+same-file suggestions as automatic authorization for extra work.
+
 
 Use the shared [resolution proof guide](../../docs/audit/references/resolution-proof.md) to separate proposed checks, observed results, and verdicts, including whether corrected source is active in the relevant running instance. Keep the existing acceptance gates and user-authorized validation scope; do not generate tests or restart services implicitly.
 

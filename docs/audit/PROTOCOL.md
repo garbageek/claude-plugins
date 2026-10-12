@@ -2,7 +2,7 @@
 
 This document is the operational quick reference for using the audit workflow.
 
-`CONTRACT.md` is the canonical source for statuses, actors, state transitions, evidence gates, field schemas, dependency semantics, machine-readable output, and compatibility rules. Do not duplicate those tables here. Any behavioral change must update `CONTRACT.md` first, then this protocol only when the operator-facing procedure changes.
+`CONTRACT.md` is the canonical source for statuses, actors, state transitions, evidence gates, field schemas, dependency semantics, and machine-readable output. Do not duplicate those tables here. Any behavioral change must update `CONTRACT.md` first, then this protocol only when the operator-facing procedure changes.
 
 ---
 
@@ -99,20 +99,6 @@ Dependency semantics are defined once in `CONTRACT.md`.
 `audit_doctor(fix=true)` or CLI `doctor --fix` may create missing workflow directories, onboarding files, or verification stubs. After applying fixes, the command surface must re-check the current state before reporting the final issue count. It must not print stale pre-fix issues as the final result.
 
 MCP `audit_doctor` must return a JSON object with structured fields, even when the underlying CLI emits human text.
-
----
-
-## Verification Field Compatibility
-
-New writes must use the canonical verification fields from `CONTRACT.md`.
-
-Parsers may read legacy compatibility fields:
-
-- `**Status:**`
-- `**Date:**`
-- `**Commit Verified At:**`
-
-Compatibility fields are read-only inputs for older records. They are not the write schema for new records.
 
 ---
 

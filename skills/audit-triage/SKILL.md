@@ -8,7 +8,10 @@ tags: [audit, triage, priority, dependency, roadmap]
 
 Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Use the bundled Python CLI after resolving `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there. A separately configured `audit_*` MCP server is an optional equivalent with an explicit absolute `root`.
 
-Purpose: turn an audit queue into executable ordering. A prose plan is optional; `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` must consume the metadata.
+Purpose: plan coherent fixes across tickets, not just assign statuses. Resolve
+dependencies and shared-change opportunities, then write decisions, scores,
+phases, and fix groups to ticket headers. A prose roadmap is optional;
+`next --for resolution` reads only ticket state.
 
 ## First move from empty context
 
@@ -26,6 +29,7 @@ If no tickets exist, report an empty queue. Do not create findings during triage
 ```bash
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" triage set 001 --impact 5 --effort 2 --p-level P0 --decision FIX --phase critical-path
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" deps add 001 --depends-on 003
+python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" triage set 001 --fix-group shared-parser-fix
 ```
 
 Dependency semantics:
@@ -46,6 +50,25 @@ Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --ro
 | P-level | P0-P3 | Execution priority |
 | Decision | FIX/DEFER/WONTFIX/DUPLICATE | Operational decision |
 | Phase | critical-path/quick-wins/feature-parity/backlog | Execution group |
+| Fix Group | Optional short slug | Tickets that can share one coherent code change |
+
+## Grouping and scheduling
+
+- Inspect affected files, call paths, overlapping changes and underlying causes
+  before choosing groups. Prefer one coherent edit session for compatible issues
+  in the same source file or a shared component, rather than repeating the same
+  investigation and patch multiple times.
+- Assign the same `--fix-group` only when work can actually be resolved together.
+  Shared files alone are a suggestion, not proof of a shared fix; identify
+  conflicting edits and dependencies before grouping.
+- Use `deps add/remove` for genuine prerequisites. A deferred, rejected or
+  blocked ticket must not become executable merely because its file matches a
+  selected group. Only PASS dependencies unblock resolution.
+- Apply every triage decision through the CLI *before* producing a report or
+  roadmap. The report is derived from `export --json` and never feeds the queue.
+- Check `next --for resolution --json`: `ticket` is the selection;
+  `related_tickets` are additional *eligible* FIX suggestions for shared work,
+  not automatically authorized extra tickets.
 
 ## Allowed actions
 
@@ -63,4 +86,5 @@ Ticket `001` is skipped by `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --ro
 
 ## Stop condition
 
-Stop when `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution --json` returns the expected highest-priority unblocked ticket.
+Stop when `doctor` accepts the metadata and `next --for resolution --json`
+returns the expected highest-priority unblocked ticket and coherent suggestions.

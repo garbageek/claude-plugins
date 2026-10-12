@@ -212,7 +212,7 @@ Use the canonical architecture workflow for normal architecture work:
 /artur-plugins:architect
 ```
 
-The architect now includes optional epic, milestone, and roadmap output profiles plus focused CLI-contract guidance. Damaged-project assessment/recovery is a separate entry point:
+The architect now includes optional change plan, epic, milestone, and roadmap output profiles plus focused CLI-contract guidance. A change plan is a source-grounded, before-to-after edit plan for an existing codebase. Damaged-project assessment/recovery is a separate entry point:
 
 ```text
 /artur-plugins:recover
@@ -354,7 +354,8 @@ Install `artur-plugins@artur-plugins`, then `/reload-plugins` or start a new ses
 Use `/artur-plugins:<skill>`; `init`/`review` are now `init-repo-instructions` and
 `review-repo-instructions`. The old init/status/next commands are shared skills,
 not duplicate command files. Keep the project's `audit/` state and existing
-handover files; consolidation does not require a data migration.
+handover files. Audit scheduling uses canonical ticket headers and does not
+read report-only triage or dependency records.
 
 Remove obsolete manually configured audit hooks only when authorized.
 Never overwrite an entire user/project hook file or delete unrelated handlers.
@@ -776,7 +777,7 @@ checkout; generated project state belongs to the selected external workspace.
 
 ## Architecture and recovery
 
-- Adds optional implementation-planning profiles and `/artur-plugins:recover` while keeping `/artur-plugins:architect` canonical.
+- Adds optional implementation-planning profiles (change plan, epic, milestone, roadmap) and `/artur-plugins:recover` while keeping `/artur-plugins:architect` canonical.
 - No additional local runtime dependency.
 
 ## Prompt design

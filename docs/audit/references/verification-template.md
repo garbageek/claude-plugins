@@ -63,11 +63,18 @@ Copy this template when verifying individual tickets.
 **{PASS|PARTIAL|FAIL|REGRESS|WONTFIX|BLOCKED|INVALID}**
 
 {One-line justification.}
+
+## Verification History
+
+{The runtime archives previous proof here when a cycle or checked revision changes.}
 ```
 
 ## CLI Verification Commands
 
-PASS requires criterion evidence for every acceptance criterion:
+PASS requires the latest result for every acceptance criterion to be `pass` in
+the current cycle and checked revision. Previous cycles and revisions are retained
+under `## Verification History`; their evidence does not satisfy PASS. Reuse
+partial results only on the same recorded Verified Commit.
 
 ```bash
 python3 "/path/to/audit-workflow/scripts/audit.py" --root "/path/to/project" verify 001 \

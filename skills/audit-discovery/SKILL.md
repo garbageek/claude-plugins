@@ -10,7 +10,20 @@ Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-
 
 Purpose: convert concrete findings into audit tickets. The CLI/MCP runtime is the source of truth; Markdown files are the human-readable record.
 
-## First move from empty context
+## Modes
+
+| Mode | Write audit files? | Behavior |
+|---|---:|---|
+| Investigate | No | Read code/logs and explain what is known. |
+| Ticketize | Yes | Create tickets only for evidence-backed findings. |
+| Audit sweep | Yes | Systematically inspect, then ticketize concrete findings. |
+
+Choose the mode from the user's request **before** invoking the runtime. A request
+to investigate or explain an issue uses Investigate: do not initialize `audit/`,
+create/open tickets, or write audit files. Report the findings and uncertainties.
+Ticketize and Audit sweep apply when the user requests audit records.
+
+## First move for Ticketize or Audit sweep
 
 Use the Python CLI by default (or equivalent tools if MCP was configured manually):
 
@@ -20,15 +33,8 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" do
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" summary
 ```
 
-If `audit/` does not exist, that is normal. Run `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init`; do not create the structure by hand.
-
-## Modes
-
-| Mode | Write audit files? | Behavior |
-|---|---:|---|
-| Investigate | No | Read code/logs and explain what is known. |
-| Ticketize | Yes | Create tickets only for evidence-backed findings. |
-| Audit sweep | Yes | Systematically inspect, then ticketize concrete findings. |
+If `audit/` does not exist, that is normal. Initialize it through the runtime;
+do not create the structure by hand. These startup steps do not apply to Investigate.
 
 ## Create tickets
 
@@ -46,8 +52,8 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" cr
 
 ## Allowed actions
 
-- initialize the workflow;
-- create `DRAFT` or `OPEN` tickets;
+- initialize the workflow in Ticketize or Audit sweep;
+- create `DRAFT` or `OPEN` tickets in Ticketize or Audit sweep;
 - promote evidence-ready `DRAFT` tickets to `OPEN` using `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" open ... --as audit-discovery`;
 - add concrete evidence, acceptance criteria, module/line references, and suggested verification.
 
@@ -60,4 +66,6 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" cr
 
 ## Stop condition
 
-Stop after tickets are created/opened and hand off to `audit-triage` or `audit-resolution`.
+In Investigate, stop after reporting evidence and uncertainties. In Ticketize or
+Audit sweep, stop after tickets are created/opened and hand off to `audit-triage`
+or `audit-resolution`.
