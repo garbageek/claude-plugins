@@ -177,14 +177,18 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" re
 
 Only the latest explicit result for each criterion in the active verification
 sections counts. A later `fail`, `partial`, `blocked`, or `regress` supersedes an
-earlier `pass`.
+earlier `pass`. If active Criteria Results and Verification Checklist disagree,
+PASS is blocked until an explicit criterion result resolves the conflict. The CLI
+retains superseded checklist lines in Criteria Results before appending that result.
 
 A new resolution cycle, reopening to `OPEN`, or changing `Verified Commit`
 archives the previous criteria, checklist, verification evidence, test record,
 verdict, and verifier metadata under `## Verification History`. Archived proof
 does not satisfy current gates. A new resolution cycle also archives resolution
 evidence and current state; supply fresh resolution evidence and a test record.
-Reopening clears resolution metadata. Refreshing READY on the same Fix Commit
+Reopening clears resolution metadata. Moving from PASS to REGRESS archives the
+previously passing proof; a subsequent PASS needs fresh verification evidence.
+Refreshing READY on the same Fix Commit
 keeps the active proof. Partial checks on the same Verified Commit can accumulate;
 checks without a recorded revision cannot be carried to a newly supplied revision.
 The runtime validates the prepared record before writing it, so a rejected
@@ -291,7 +295,10 @@ report in exports and scheduling. The report is a compatibility fallback for
 missing legacy values only. Apply triage decisions through `triage set`; a stale
 report cannot override the updated ticket. `Decision` defaults to `FIX` only when
 neither source supplies a value. `triage set` inserts supplied fields when a
-legacy ticket lacks them.
+legacy ticket lacks them. Updating either Impact or Effort recalculates Priority
+and P-level when both ratings are available; explicit `--p-level` takes precedence.
+The resolution queue includes `Decision: FIX` only. Verification can finish
+already-ready tickets regardless of their triage decision.
 
 ---
 
