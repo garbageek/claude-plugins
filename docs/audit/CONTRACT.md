@@ -295,7 +295,9 @@ read-only projections of exported state. Editing those files never changes
 `next`, `export`, or `doctor`.
 
 Updating either Impact or Effort recalculates Priority and P-level when both
-ratings are present; explicit `--p-level` overrides the calculated level.
+ratings are present. With only one rating, Priority remains empty and a manually
+assigned P-level is preserved. Explicit `--p-level` overrides the calculated level.
+Missing ticket header fields are inserted by `triage set` and `deps add/remove`.
 `doctor` detects missing/invalid decisions and inconsistent priority scores.
 The resolution queue includes only `Decision: FIX` tickets with satisfied
 dependencies. Verification can finish ready tickets regardless of Decision.

@@ -354,7 +354,8 @@ Install `artur-plugins@artur-plugins`, then `/reload-plugins` or start a new ses
 Use `/artur-plugins:<skill>`; `init`/`review` are now `init-repo-instructions` and
 `review-repo-instructions`. The old init/status/next commands are shared skills,
 not duplicate command files. Keep the project's `audit/` state and existing
-handover files; consolidation does not require a data migration.
+handover files. Audit scheduling uses canonical ticket headers and does not
+read report-only triage or dependency records.
 
 Remove obsolete manually configured audit hooks only when authorized.
 Never overwrite an entire user/project hook file or delete unrelated handlers.

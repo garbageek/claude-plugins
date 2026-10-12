@@ -454,6 +454,15 @@ def _ensure_field_after(text: str, after_label: str, label: str, value: str) -> 
     return updated + text[len(header):]
 
 
+def _set_ticket_field(text: str, after_label: str, label: str, value: str) -> str:
+    """Write a ticket header field, inserting it when absent; never report false success."""
+    updated = _ensure_field_after(text, after_label, label, value)
+    pattern = rf"(?m)^[ \t]*\*\*{re.escape(label)}:\*\*"
+    if not re.search(pattern, _metadata_header(updated)) or _field(updated, label) != value:
+        raise AuditError(f"unable to set ticket field {label}", 1)
+    return updated
+
+
 def _section_content(text: str, section: str) -> str:
     m = re.search(rf"^{re.escape(section)}[ \t]*$", text, flags=re.MULTILINE)
     if not m:
@@ -1952,34 +1961,37 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
     path = _ticket_for(num)
     if not path:
         raise AuditError(f"ticket {num:03d} not found", 1)
+    if all(getattr(args, name) is None for name in ("impact", "effort", "p_level", "decision", "phase", "fix_group")):
+        raise AuditError("triage set requires at least one field to update", 2)
     if args.fix_group and args.fix_group.lower() != "none" and not FIX_GROUP_PATTERN.fullmatch(args.fix_group):
         raise AuditError("--fix-group must be an alphanumeric slug (letters, numbers, ., _, -) or 'none'", 2)
     with _create_lock_cm():
         text = path.read_text(encoding="utf-8", errors="replace")
         if args.impact is not None:
-            text = _replace_field(text, "Impact", str(args.impact))
+            text = _set_ticket_field(text, "Blocks", "Impact", str(args.impact))
         if args.effort is not None:
-            text = _replace_field(text, "Effort", str(args.effort))
+            text = _set_ticket_field(text, "Impact", "Effort", str(args.effort))
         if args.impact is not None or args.effort is not None:
             impact = _int_or_default(_field(text, "Impact"), 0)
             effort = _int_or_default(_field(text, "Effort"), 0)
             if 1 <= impact <= 5 and 1 <= effort <= 5:
                 priority = impact * (6 - effort)
-                text = _replace_field(text, "Priority", str(priority))
+                text = _set_ticket_field(text, "Effort", "Priority", str(priority))
                 plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
-                text = _replace_field(text, "P-level", plevel)
+                text = _set_ticket_field(text, "Priority", "P-level", plevel)
             else:
-                text = _replace_field(text, "Priority", "")
-                text = _replace_field(text, "P-level", "")
+                # An incomplete score has no computed Priority, but an explicitly
+                # selected P-level is still meaningful for scheduling.
+                text = _set_ticket_field(text, "Effort", "Priority", "")
         if args.p_level:
-            text = _replace_field(text, "P-level", args.p_level)
+            text = _set_ticket_field(text, "Priority", "P-level", args.p_level)
         if args.decision:
-            text = _replace_field(text, "Decision", args.decision)
+            text = _set_ticket_field(text, "P-level", "Decision", args.decision)
         if args.phase is not None:
-            text = _replace_field(text, "Phase", args.phase)
+            text = _set_ticket_field(text, "Decision", "Phase", args.phase)
         if args.fix_group is not None:
             group = "" if args.fix_group.lower() == "none" else args.fix_group
-            text = _replace_field(text, "Fix Group", group)
+            text = _set_ticket_field(text, "Phase", "Fix Group", group)
         path.write_text(text, encoding="utf-8")
     print(f"{num:03d}: triage metadata updated ({_rel(path)})")
 
@@ -1989,10 +2001,9 @@ def _dependency_state(path: Path) -> tuple[set[str], set[str], str]:
     return set(_split_ids(_field(content, "Depends On"))), set(_split_ids(_field(content, "Blocks"))), content
 
 
-def _write_dependency_state(path: Path, depends: set[str], blocks: set[str], content: str) -> None:
-    content = _replace_field(content, "Depends On", _join_ids(sorted(depends)))
-    content = _replace_field(content, "Blocks", _join_ids(sorted(blocks)))
-    path.write_text(content, encoding="utf-8")
+def _updated_dependency_text(depends: set[str], blocks: set[str], content: str) -> str:
+    content = _set_ticket_field(content, "Source", "Depends On", _join_ids(sorted(depends)))
+    return _set_ticket_field(content, "Depends On", "Blocks", _join_ids(sorted(blocks)))
 
 
 def _mutate_dependencies(ticket_id: str, *, depends_on: Sequence[str], blocks: Sequence[str], remove: bool) -> list[Path]:
@@ -2027,9 +2038,13 @@ def _mutate_dependencies(ticket_id: str, *, depends_on: Sequence[str], blocks: S
         blocked_depends, blocked_blocks, _ = state[blocked]
         op(blocked_depends, source_id)
 
-    for tid, path in paths.items():
-        depends, blocked, content = state[tid]
-        _write_dependency_state(path, depends, blocked, content)
+    # Validate every record before writing any of the linked ticket files.
+    updates = {
+        path: _updated_dependency_text(*state[tid])
+        for tid, path in paths.items()
+    }
+    for path, content in updates.items():
+        path.write_text(content, encoding="utf-8")
     return list(paths.values())
 
 
