@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -18,5 +20,31 @@ jobs:
         run: python -m pip install PyYAML==6.0.3
       - name: Validate the single Claude and Codex plugin
         run: python scripts/validate_plugins.py
+      - name: Check plugin version increment
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python - <<'PYCODE'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          def parsed_version(value, location):
+              if not isinstance(value, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value):
+                  raise SystemExit(f"{location}: expected MAJOR.MINOR.PATCH, got {value!r}")
+              return tuple(map(int, value.split(".")))
+
+          for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+              current = json.loads(Path(path).read_text(encoding="utf-8"))["version"]
+              base = json.loads(subprocess.check_output(
+                  ["git", "show", f"{os.environ['BASE_SHA']}:{path}"], text=True
+              ))["version"]
+              if parsed_version(current, path) <= parsed_version(base, f"base {path}"):
+                  raise SystemExit(f"{path}: version must increase ({base} -> {current})")
+              print(f"{path}: {base} -> {current}")
+          PYCODE
       - name: Compile maintained Python files
         run: python -m compileall -q scripts mcp skills

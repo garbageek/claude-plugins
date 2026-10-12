@@ -13,6 +13,8 @@ SERVER_NAME = "audit-workflow"
 # structuredContent in tool results is defined from 2025-06-18; older clients ignore it.
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2025-03-26"}
+_NEGOTIATED_VERSION = PROTOCOL_VERSION
+_BATCH_RESPONSES: list[dict[str, Any]] | None = None
 
 
 sys.dont_write_bytecode = True
@@ -67,22 +69,24 @@ def audit_script() -> Path:
     return plugin_root() / "scripts" / "audit.py"
 
 
-def respond(msg_id: Any, result: Any = None, error: dict[str, Any] | None = None) -> None:
-    if msg_id is None:
+def respond(
+    msg_id: Any, result: Any = None, error: dict[str, Any] | None = None, *, force: bool = False,
+) -> None:
+    if msg_id is None and not force:
         return
     payload: dict[str, Any] = {"jsonrpc": "2.0", "id": msg_id}
-    if error is not None:
-        payload["error"] = error
+    payload["error" if error is not None else "result"] = error if error is not None else result
+    if _BATCH_RESPONSES is not None:
+        _BATCH_RESPONSES.append(payload)
     else:
-        payload["result"] = result
-    print(json.dumps(payload, separators=(",", ":")), flush=True)
+        print(json.dumps(payload, separators=(",", ":")), flush=True)
 
 
 def tool_result(data: Any, *, is_error: bool = False) -> dict[str, Any]:
     text = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)
     result: dict[str, Any] = {"content": [{"type": "text", "text": text}], "isError": is_error}
-    if isinstance(data, (dict, list)):
-        result["structuredContent"] = data
+    if isinstance(data, (dict, list)) and _NEGOTIATED_VERSION != "2025-03-26":
+        result["structuredContent"] = data if isinstance(data, dict) else {"items": data}
     return result
 
 
@@ -183,15 +187,15 @@ def run_doctor(args: dict[str, Any], *, fix: bool = False) -> dict[str, Any]:
     recheck_parsed = parse_doctor_output(recheck.get("stdout"), str(recheck.get("stderr") or ""))
 
     return {
-        "ok": bool(recheck.get("ok")),
-        "returncode": recheck.get("returncode"),
+        "ok": bool(first.get("ok")) and bool(recheck.get("ok")),
+        "returncode": first.get("returncode") if not first.get("ok") else recheck.get("returncode"),
         "root": recheck.get("root"),
         "command": first.get("command"),
         "recheck_command": recheck.get("command"),
         "rechecked_after_fix": True,
         "fix_attempt": first_parsed,
         "doctor": recheck_parsed,
-        "stderr": recheck.get("stderr", ""),
+        "stderr": first.get("stderr") or recheck.get("stderr", ""),
     }
 
 
@@ -204,13 +208,15 @@ def arr(value: Any) -> list[str]:
 
 
 def optional_arg(out: list[str], flag: str, value: Any) -> None:
-    if value is not None and str(value) != "":
-        out.extend([flag, str(value)])
+    if value is not None:
+        # Preserve explicit empty values and prevent text such as "--help"
+        # from being parsed as an option to the subprocess.
+        out.append(f"{flag}={value}")
 
 
 def repeated_arg(out: list[str], flag: str, values: Any) -> None:
     for value in arr(values):
-        out.extend([flag, value])
+        out.append(f"{flag}={value}")
 
 
 def tools() -> list[dict[str, Any]]:
@@ -287,18 +293,71 @@ def tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": root_prop, "additionalProperties": False},
         },
     ]
-    if requires_explicit_root():
-        for tool in definitions:
-            tool["inputSchema"].setdefault("required", []).append("root")
+    for tool in definitions:
+        schema = tool["inputSchema"]
+        if "ids" in schema["properties"]:
+            schema["oneOf"] = [{"required": ["id"]}, {"required": ["ids"]}]
+            schema["properties"]["ids"]["minItems"] = 1
+        if requires_explicit_root():
+            schema.setdefault("required", []).append("root")
     return definitions
 
 
 def _ids(args: dict[str, Any]) -> list[str]:
-    return arr(args.get("ids")) or arr(args.get("id"))
+    if ("id" in args) == ("ids" in args):
+        raise ValueError("specify exactly one of id or ids")
+    return arr(args["ids"] if "ids" in args else args["id"])
+
+
+def _validate_value(value: Any, schema: dict[str, Any], path: str) -> None:
+    expected = schema.get("type")
+    matches = {
+        "object": isinstance(value, dict), "array": isinstance(value, list),
+        "string": isinstance(value, str), "boolean": isinstance(value, bool),
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+    }
+    if expected and not matches.get(expected, False):
+        raise ValueError(f"{path} must be {expected}")
+    if "enum" in schema and value not in schema["enum"]:
+        raise ValueError(f"{path} must be one of {schema['enum']}")
+    if expected == "string":
+        if len(value) < schema.get("minLength", 0):
+            raise ValueError(f"{path} must not be empty")
+        if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
+            raise ValueError(f"{path} does not match {schema['pattern']}")
+    elif expected == "integer":
+        if "minimum" in schema and value < schema["minimum"]:
+            raise ValueError(f"{path} must be >= {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise ValueError(f"{path} must be <= {schema['maximum']}")
+    elif expected == "array":
+        if len(value) < schema.get("minItems", 0):
+            raise ValueError(f"{path} must not be empty")
+        for index, item in enumerate(value):
+            _validate_value(item, schema["items"], f"{path}[{index}]")
+    elif expected == "object":
+        missing = [key for key in schema.get("required", []) if key not in value]
+        if missing:
+            raise ValueError(f"{path} missing required fields: {', '.join(missing)}")
+        properties = schema.get("properties", {})
+        unexpected = set(value) - set(properties)
+        if schema.get("additionalProperties") is False and unexpected:
+            raise ValueError(f"{path} unknown fields: {', '.join(sorted(unexpected))}")
+        if "oneOf" in schema:
+            count = sum(all(key in value for key in choice.get("required", [])) for choice in schema["oneOf"])
+            if count != 1:
+                raise ValueError("specify exactly one of id or ids")
+        for key, item in value.items():
+            if key in properties:
+                _validate_value(item, properties[key], f"{path}.{key}")
 
 
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     try:
+        definition = next((tool for tool in tools() if tool["name"] == name), None)
+        if definition is None:
+            raise ValueError(f"unknown tool: {name}")
+        _validate_value(args, definition["inputSchema"], "arguments")
         default_root(args)
     except ValueError as exc:
         return tool_result({"ok": False, "error": str(exc)}, is_error=True)
@@ -322,7 +381,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         init_result = run_audit(args, "init")
         if not init_result.get("ok"):
             return audit_tool_result({"ok": False, "stage": "init", "init": init_result})
-        cmd = ["create", str(args["category"]), "--title", str(args["title"]), "--severity", str(args["severity"])]
+        cmd = ["create", args["category"]]
+        optional_arg(cmd, "--title", args["title"])
+        optional_arg(cmd, "--severity", args["severity"])
         optional_arg(cmd, "--module", args.get("module"))
         optional_arg(cmd, "--lines", args.get("lines"))
         optional_arg(cmd, "--source", args.get("source"))
@@ -355,7 +416,9 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         ids = _ids(args)
         if not ids:
             return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
-        cmd = ["resolve", *ids, "--fix-commit", str(args["fix_commit"]), "--test", str(args["test"]), "--as", "audit-resolution"]
+        cmd = ["resolve", *ids, "--as", "audit-resolution"]
+        optional_arg(cmd, "--fix-commit", args["fix_commit"])
+        optional_arg(cmd, "--test", args["test"])
         repeated_arg(cmd, "--evidence", args.get("evidence"))
         repeated_arg(cmd, "--changed", args.get("changed"))
         optional_arg(cmd, "--verdict", args.get("verdict"))
@@ -364,7 +427,8 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         ids = _ids(args)
         if not ids:
             return tool_result({"ok": False, "error": "id or ids is required"}, is_error=True)
-        cmd = ["verify", *ids, "--status", str(args["status"]), "--as", "audit-verification"]
+        cmd = ["verify", *ids, "--as", "audit-verification"]
+        optional_arg(cmd, "--status", args["status"])
         optional_arg(cmd, "--verified-commit", args.get("verified_commit"))
         repeated_arg(cmd, "--criterion", args.get("criteria"))
         repeated_arg(cmd, "--evidence", args.get("evidence"))
@@ -392,16 +456,32 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return tool_result({"ok": False, "error": f"unknown tool: {name}"}, is_error=True)
 
 
-def handle(msg: dict[str, Any]) -> None:
+def handle(msg: Any) -> None:
+    global _NEGOTIATED_VERSION
+    if (
+        not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0"
+        or not isinstance(msg.get("method"), str)
+        or ("id" in msg and (isinstance(msg["id"], bool) or not isinstance(msg["id"], (str, int))))
+    ):
+        respond(None, error={"code": -32600, "message": "Invalid JSON-RPC request"}, force=True)
+        return
     msg_id = msg.get("id")
-    method = msg.get("method")
-    params = msg.get("params") or {}
+    method = msg["method"]
+    if msg_id is None:  # Notifications never execute request-only tool methods.
+        return
+    params = msg.get("params", {})
+    if not isinstance(params, dict):
+        respond(msg_id, error={"code": -32602, "message": "params must be an object"})
+        return
     try:
         if method == "initialize":
-            client_version = params.get("protocolVersion") if isinstance(params, dict) else None
-            selected_version = client_version if client_version in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
+            client_version = params.get("protocolVersion")
+            if not isinstance(client_version, str):
+                respond(msg_id, error={"code": -32602, "message": "protocolVersion must be a string"})
+                return
+            _NEGOTIATED_VERSION = client_version if client_version in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
             respond(msg_id, {
-                "protocolVersion": selected_version,
+                "protocolVersion": _NEGOTIATED_VERSION,
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": SERVER_NAME, "version": server_version()},
             })
@@ -409,21 +489,27 @@ def handle(msg: dict[str, Any]) -> None:
             respond(msg_id, {"tools": tools()})
         elif method == "tools/call":
             name = params.get("name")
-            args = params.get("arguments") or {}
-            respond(msg_id, call_tool(str(name), args if isinstance(args, dict) else {}))
-        elif method in {"ping", "notifications/initialized"}:
-            if msg_id is not None:
-                respond(msg_id, {})
+            if not isinstance(name, str) or name not in {tool["name"] for tool in tools()}:
+                respond(msg_id, error={"code": -32602, "message": f"Unknown tool: {name}"})
+                return
+            args = params.get("arguments", {})
+            if not isinstance(args, dict):
+                respond(msg_id, error={"code": -32602, "message": "arguments must be an object"})
+                return
+            respond(msg_id, call_tool(name, args))
+        elif method == "ping":
+            respond(msg_id, {})
         elif method in {"resources/list", "prompts/list"}:
             key = "resources" if method == "resources/list" else "prompts"
             respond(msg_id, {key: []})
         else:
             respond(msg_id, error={"code": -32601, "message": f"Method not found: {method}"})
-    except Exception as exc:  # noqa: BLE001 - protocol boundary
+    except Exception as exc:  # Protocol boundary: do not terminate the stdio server.
         respond(msg_id, error={"code": -32603, "message": str(exc)})
 
 
 def main() -> None:
+    global _BATCH_RESPONSES
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -431,13 +517,21 @@ def main() -> None:
         try:
             msg = json.loads(line)
         except json.JSONDecodeError as exc:
-            respond(None, error={"code": -32700, "message": str(exc)})
+            respond(None, error={"code": -32700, "message": str(exc)}, force=True)
             continue
         if isinstance(msg, list):
-            for item in msg:
-                if isinstance(item, dict):
+            if _NEGOTIATED_VERSION != "2025-03-26" or not msg:
+                respond(None, error={"code": -32600, "message": "Batch requests are not supported by this protocol version"}, force=True)
+                continue
+            _BATCH_RESPONSES = []
+            try:
+                for item in msg:
                     handle(item)
-        elif isinstance(msg, dict):
+                if _BATCH_RESPONSES:
+                    print(json.dumps(_BATCH_RESPONSES, separators=(",", ":")), flush=True)
+            finally:
+                _BATCH_RESPONSES = None
+        else:
             handle(msg)
 
 

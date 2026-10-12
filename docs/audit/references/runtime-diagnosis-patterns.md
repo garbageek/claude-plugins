@@ -123,3 +123,11 @@ For each pattern found:
 4. **Move to the next pattern** — don't fix during audit, just record
 
 The patterns are ordered by diagnostic frequency in typical LLM agent systems, not by severity. Check all of them — they frequently co-occur.
+
+## Audit CLI and MCP failures
+
+- A failed PASS is not permission to rewrite a verification file. Read the rejected record, identify missing active Evidence/Test Verification/criterion results, and supply only newly observed proof. Quoted examples and archived proof do not count.
+- Graph errors (cycles, dangling or one-sided edges) differ from warnings about waiting for a prerequisite. Repair edges through `deps add/remove` or explicit `doctor --fix`; only PASS unblocks dependents.
+- A lock error means another local command owns the workspace or locking failed. Do not bypass it. Retry after the competing command finishes.
+- `commit_error` means audit records were written but the opted-in Git commit failed. Inspect Git state instead of re-running resolution and creating another evidence cycle.
+- MCP tool arguments must match the advertised schema. Use boolean `false`, not the string `"false"`. An empty Phase is `phase: ""`; malformed JSON has a protocol error response and does not terminate the server.

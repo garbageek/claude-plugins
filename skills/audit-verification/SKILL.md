@@ -22,12 +22,11 @@ Use the shared [resolution proof guide](../../docs/audit/references/resolution-p
 ## First move from empty context
 
 ```bash
-python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for verification --json
 ```
 
-If no ticket is returned, report that nothing is awaiting verification. Do not create or resolve tickets.
+If the workspace is absent or no ticket is returned, report that state without initializing it. Do not create or resolve tickets. Diagnose malformed records rather than treating a failed queue command as an empty queue.
 
 ## PASS flow
 
@@ -37,7 +36,7 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" sh
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" verify 001   --status PASS   --verified-commit def456   --criterion "AC1: pass - null-user payload returns typed validation error"   --evidence "Manual reproducer no longer fails"   --test "manual reproducer: pass"   --verdict "All acceptance criteria satisfied"   --as audit-verification   --json
 ```
 
-Use `PARTIAL` or `FAIL` when evidence is incomplete or a criterion is not satisfied.
+Repeat `--criterion` once per single-line result using the original unique AC IDs. Evidence, the executed check/result, and the verdict must be meaningful in the active record; placeholder text or quoted examples do not satisfy PASS. Use `PARTIAL` or `FAIL` when evidence is incomplete or a criterion is not satisfied. Do not replace an existing verification file with the reference template.
 
 ## Allowed actions
 

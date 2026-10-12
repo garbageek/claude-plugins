@@ -143,7 +143,7 @@ The canonical runtime must expose this exact matrix. Changes to statuses, actors
 
 Incomplete tickets stay `DRAFT` and are excluded from `audit_next(for_role="resolution")` or the CLI equivalent.
 
-Placeholder content includes HTML comments, `TODO`, and brace placeholders such as `{description}` or `{path/to/file.py}`.
+Placeholder content includes HTML comments, `TODO`, empty list/checklist items, and brace placeholders such as `{description}` or `{path/to/file.py}`. Acceptance criteria have unique AC IDs; the creator preserves explicit IDs and allocates unused IDs for unnumbered criteria. Duplicate IDs are rejected, not overwritten.
 
 ### `OPEN → READY_FOR_VERIFICATION`
 
@@ -159,8 +159,8 @@ Use:
 ```bash
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" resolve 042 \
   --fix-commit abc123 \
-  --evidence "Regression test added: tests/test_parser.py::test_null_input" \
-  --test "pytest tests/test_parser.py: pass" \
+  --evidence "Corrected null-input branch in src/parser.py" \
+  --test "Manual null-input reproducer: expected result" \
   --changed src/parser.py \
   --as audit-resolution
 ```
@@ -172,14 +172,14 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" re
 - actor `audit-verification`
 - `--verified-commit`
 - verdict text
-- evidence/test record
+- non-placeholder `## Evidence` and `## Test Verification` in the active record
 - passing result for every acceptance criterion (`AC1`, `AC2`, ...)
 
 Only the latest explicit result for each criterion in the active verification
 sections counts. A later `fail`, `partial`, `blocked`, or `regress` supersedes an
 earlier `pass`. If active Criteria Results and Verification Checklist disagree,
 PASS is blocked until an explicit criterion result resolves the conflict. The CLI
-retains superseded checklist lines in Criteria Results before appending that result.
+retains superseded checklist lines in Criteria Results before appending that result. Each `--criterion` is one line; repeat the option for additional results. Result-like text inside fenced examples or comments is not an active criterion. The transition gate and `doctor` validate the same prepared record rather than treating CLI arguments as proof by themselves.
 
 A new resolution cycle, reopening to `OPEN`, or changing `Verified Commit`
 archives the previous criteria, checklist, verification evidence, test record,
@@ -249,11 +249,7 @@ fenced examples and status history do not provide missing header values. Read an
 update the first matching header field, preserving examples in the body. Empty
 header fields must not consume the following line.
 
-Covered `Edit`/`MultiEdit` and `apply_patch` operations compare the resulting
-protected header fields. Evidence may quote a status without changing lifecycle
-state. A patch to a managed record must have exact, unambiguous existing context;
-unsupported/fuzzy/context-free patches are refused rather than guessed. Add
-sufficient unchanged context or use the canonical runtime for lifecycle changes.
+Lifecycle gates are enforced by the CLI and its MCP wrapper, not by editor hooks. Use the runtime for lifecycle writes. Section parsing ignores headings inside fenced code and comments; archival preserves quoted proof. Local CLI commands wait up to 10 seconds for a shared/exclusive project lock and stage complete record files before replacing them. Caught I/O failures restore previously replaced files; this is not a process-crash transaction across multiple files.
 
 
 ---
@@ -300,7 +296,7 @@ assigned P-level is preserved. Explicit `--p-level` overrides the calculated lev
 Missing ticket header fields are inserted by `triage set` and `deps add/remove`.
 `doctor` detects missing/invalid decisions and inconsistent priority scores.
 The resolution queue includes only `Decision: FIX` tickets with satisfied
-dependencies. Verification can finish ready tickets regardless of Decision.
+dependencies. The same eligibility check applies to explicitly requested resolution, not only queue selection. `BLOCKED` records are excluded until explicitly resumed after the blocker is removed. Verification can finish ready tickets regardless of Decision.
 
 `next --for resolution` returns the highest-priority ready FIX ticket plus
 `related_tickets` for other ready FIX tickets with the same `Fix Group`, or the
@@ -318,7 +314,7 @@ Canonical edge meaning:
 003 blocks 001
 ```
 
-Meaning: ticket `001` depends on ticket `003` and should not be selected for resolution until `003` is resolved.
+Meaning: ticket `001` depends on ticket `003` and cannot enter resolution until `003` reaches `PASS`.
 
 Equivalent ticket field:
 
@@ -326,7 +322,7 @@ Equivalent ticket field:
 **Depends On:** `003`
 ```
 
-`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `WONTFIX`, `INVALID`). Only a PASS dependency unblocks a dependent ticket.
+`deps add` and creation with dependencies validate the prospective graph before writing any ticket. Missing targets, self-links and cycles are errors. `doctor` also reports one-sided edges; waiting on a `FAIL`, `BLOCKED`, `WONTFIX` or `INVALID` prerequisite is a warning, not structural corruption. Only `PASS` unblocks a dependent ticket. Remove an obsolete/dangling edge with `deps remove`; removal does not require recreating a missing target.
 
 The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. `audit_doctor` reports one-sided edges as inconsistent state, and `audit_doctor(fix=true)` synchronizes ticket headers. No dependency report is consulted for scheduling.
 
@@ -340,7 +336,7 @@ The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` o
 | Verification metadata update | `audit-verification` | File write only by default. |
 | Audit metadata commit | `audit` CLI | Opt-in via `--git-commit`; checks dirty worktree first. |
 
-`--git-commit` fails on a dirty worktree unless `--allow-dirty` is explicitly passed.
+`--git-commit` checks the worktree before changing records and fails when it is dirty unless `--allow-dirty` is explicit. Its own subsequent metadata changes do not fail this preflight. The commit includes only the affected audit files; unrelated staged work remains staged. A Git failure after writing records returns non-zero and reports that the records were updated but not committed.
 
 ---
 
@@ -350,7 +346,7 @@ The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` o
 
 `audit_doctor(fix=true)` (or CLI `doctor --fix`) may create missing directories, onboarding files, or verification stubs, and may write the missing side of one-sided dependency edges. After applying any fix, the user-visible final result must be based on a fresh re-check, not on the pre-fix issue list.
 
-A command may report both the fix attempt and the re-check, but the final issue count must represent the post-fix state.
+A command may report both the fix attempt and the re-check, but the final issue count must represent the post-fix state. A failed fix remains a failed operation even if a re-check succeeds. Duplicate IDs or mismatched filenames require explicit repair; `doctor --fix` does not guess which record is authoritative.
 
 ---
 
@@ -361,9 +357,12 @@ When `--json` is passed:
 - stdout contains JSON only;
 - human output is suppressed;
 - failed batch updates return non-zero exit status;
-- batch JSON contains per-ID `updated` and `failed` arrays.
+- batch JSON contains per-ID `updated` and `failed` arrays; repeated IDs are processed once;
+- an optional `commit_error` describes a metadata commit failure without hiding successful file updates.
 
 MCP tools must return structured JSON text in the MCP content envelope. If the wrapped CLI command emits human text, the MCP layer must normalize it into a JSON object and preserve the raw text in a named field such as `stdout_text`.
+
+MCP validates tool schemas before side effects, requires real booleans, and preserves explicit empty-string updates. Unknown parameters, invalid JSON-RPC requests, and malformed JSON produce errors instead of silently succeeding. Negotiated protocol behavior is retained.
 
 MCP `audit_create` has an explicit cold-start side effect: it initializes the audit tree before ticket creation. The tool result must expose both initialization and creation results, and must not continue to creation if initialization fails.
 
@@ -377,6 +376,6 @@ The canonical source of truth is the normalized record produced by:
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json
 ```
 
-Reports and baselines should derive from this model rather than re-parsing different subsets independently. Baselines include status, semantic metadata, and content hashes.
+Reports and baselines derive from this model rather than re-parsing different subsets independently. Baseline snapshots and semantic comparisons share the same triage fields, including Impact, Effort, Decision, Phase and Fix Group. Named snapshots are not overwritten; comparison selects the latest stored creation time when no tag is supplied. Comparison never initializes an absent workspace.
 
 `docs/audit/references/runtime-diagnosis-patterns.md` is a maintained operational reference and must be updated when runtime diagnosis behavior changes.

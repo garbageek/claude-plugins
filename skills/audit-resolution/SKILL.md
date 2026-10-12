@@ -22,12 +22,11 @@ Use the shared [resolution proof guide](../../docs/audit/references/resolution-p
 ## First move from empty context
 
 ```bash
-python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" doctor
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution --json
 ```
 
-If no ticket is returned, report that no resolution work is queued. Do not invent tickets.
+If the workspace is absent or no ticket is returned, report it without initializing or inventing tickets. A `BLOCKED` ticket requires an explicit resume after its blocker is removed; it is not selected automatically. Before changing implementation, confirm `Decision: FIX` and that every dependency is `PASS`, even for a ticket explicitly named by the user.
 
 ## Default flow
 
@@ -54,4 +53,4 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" re
 
 ## Stop condition
 
-Stop after the selected ticket reaches `READY_FOR_VERIFICATION` and summarize what verification should check.
+Stop after the selected ticket reaches `READY_FOR_VERIFICATION` and summarize what verification should check. Report command failures from their actual exit/result. If metadata was written but an opted-in Git commit failed, report both facts; do not repeat the resolution as though nothing changed.

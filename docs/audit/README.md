@@ -117,4 +117,4 @@ The runtime requires `python3`; the local integration targets macOS/Linux Claude
 - `docs/audit/CONTRACT.md` — canonical lifecycle and role contract.
 - `docs/audit/PROTOCOL.md` — operator quick reference.
 - `docs/audit/references/` — durable audit templates/references.
-- `scripts/audit.py` — canonical runtime and direct CLI fallback.
+- `scripts/audit.py` — canonical runtime and primary CLI entry point.

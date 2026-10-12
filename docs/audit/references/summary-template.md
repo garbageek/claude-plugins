@@ -46,6 +46,7 @@ Copy this to `{project}/audit/SUMMARY.md` when generating the final report.
 
 | Status | Count |
 |--------|-------|
+| DRAFT  | 0     |
 | OPEN   | 0     |
 | READY_FOR_VERIFICATION | 0 |
 | PASS   | 0     |
