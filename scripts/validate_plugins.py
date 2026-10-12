@@ -53,7 +53,9 @@ def validate_manifests():
     require(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name), "Plugin name must be kebab-case")
     require(local_path(codex.get("skills")) == ROOT / "skills", "Codex must load the common skills")
     require("hooks" not in codex, "The Codex manifest must not register bundled hooks")
-    require(local_path(codex.get("mcpServers")) == ROOT / "mcp/codex.json", "Incorrect Codex MCP adapter")
+    require("mcpServers" not in claude and "mcpServers" not in codex,
+            "Do not auto-register MCP servers in plugin manifests")
+    require("hooks" not in claude, "Do not auto-register Claude hooks")
     interface = codex.get("interface", {})
     require(interface.get("category") == "Developer Tools", "Missing/incorrect Codex category")
     prompts = interface.get("defaultPrompt", [])
@@ -148,29 +150,26 @@ def validate_files():
 
 def validate_audit_mcp():
     require(not (ROOT / "hooks").exists(), "Bundled hooks must be removed")
-    for relative in (".mcp.json", "mcp/codex.json"):
-        servers = read_json(ROOT / relative)["mcpServers"]
-        require(set(servers) == {"audit-workflow"}, f"{relative}: unexpected/missing audit server")
-        server = servers["audit-workflow"]
-        require(server.get("command") == "python3", f"{relative}: expected Python launcher")
-        if relative == ".mcp.json":
-            require(server.get("args") == ["${CLAUDE_PLUGIN_ROOT}/mcp/audit_mcp_server.py"],
-                    "Claude: incorrect shared MCP path")
-        else:
-            # Native Codex resolves relative cwd from the installed plugin root,
-            # but does not interpolate PLUGIN_ROOT in MCP args or env.
-            require(server.get("cwd") == ".", "Codex: cwd must resolve to the installed plugin root")
-            require(server.get("args") == ["mcp/audit_mcp_server.py"],
-                    "Codex: MCP path must be relative to plugin cwd")
-        env = server.get("env", {})
-        require(env.get("AUDIT_REQUIRE_EXPLICIT_ROOT") == "1" and "AUDIT_PROJECT_DIR" not in env,
-                f"{relative}: require explicit project roots, not plugin cwd")
-        if relative == "mcp/codex.json":
-            require("AUDIT_PLUGIN_ROOT" not in env,
-                    "Codex: do not use unexpanded PLUGIN_ROOT in native MCP env")
+    require(not (ROOT / ".mcp.json").exists(),
+            "Root .mcp.json would automatically register a Claude MCP connector")
+    require(not (ROOT / "mcp.json").exists(),
+            "Root mcp.json would automatically register a portable MCP connector")
+    codex = read_json(ROOT / "mcp/codex.json")
+    servers = codex.get("mcpServers", {})
+    require(set(servers) == {"audit-workflow"}, "Optional Codex adapter must keep audit-workflow")
+    server = servers["audit-workflow"]
+    require(server.get("command") == "python3", "Codex: expected Python launcher")
+    require(server.get("cwd") == ".", "Codex: expected relative plugin cwd")
+    require(server.get("args") == ["mcp/audit_mcp_server.py"],
+            "Codex: expected plugin-relative MCP path")
+    env = server.get("env", {})
+    require(env.get("AUDIT_REQUIRE_EXPLICIT_ROOT") == "1" and "AUDIT_PROJECT_DIR" not in env,
+            "Codex: explicit project root must be required")
+    require("AUDIT_PLUGIN_ROOT" not in env,
+            "Codex: do not use unexpanded PLUGIN_ROOT in native MCP env")
     for relative in ("scripts/audit.py", "scripts/scatter_scan.py", "mcp/audit_mcp_server.py"):
         local_path(relative)
-    print("Audit MCP: shared runtime and explicit project roots (host execution not checked)")
+    print("Audit: CLI on request; no bundled hooks or auto-registered MCP server")
 
 
 def main():

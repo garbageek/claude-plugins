@@ -1,6 +1,6 @@
 # Audit Workflow
 
-Evidence-first governed audit workflow for local Claude Code and Codex, using one Python runtime, shared skills, and a shared MCP server.
+Evidence-first governed audit workflow for Claude Code and Codex, using one Python CLI runtime, shared skills, and an optional, separately configured MCP server.
 
 ```text
 skills/      role procedures, init/status/next, and read-only investigation
@@ -31,9 +31,9 @@ For an unpacked local checkout, use its absolute path instead of
 
 Invoke the shared skills as `$deep-review`, `$feature-scattering`,
 `$audit-discovery`, `$audit-triage`, `$audit-resolution`, or `$audit-verification`.
-For init/status/next, use `$audit-init`, `$audit-status`, `$audit-next`, or the corresponding `audit_*` MCP tools. Supply an
-absolute project `root` to every MCP call. CLI fallback requires explicit
-installed-plugin and project paths, as defined in the
+For init/status/next, use `$audit-init`, `$audit-status`, `$audit-next`. The
+Python CLI requires explicit installed-plugin and project paths; separately
+configured `audit_*` MCP tools require an absolute project `root`, as defined in the
 [invocation contract](CONTRACT.md#1-canonical-runtime-invocation).
 
 Verification runs in a fresh native Codex subagent or another independent
@@ -67,8 +67,8 @@ The existing lifecycle, actors, and evidence gates are retained.
 /artur-plugins:audit-status
 ```
 
-Prefer the structured `audit_*` MCP tools. For an ordinary Bash CLI fallback,
-resolve the actual installed plugin and target project paths first:
+Use the bundled Python CLI for audit lifecycle operations; first resolve the
+actual installed plugin and target project paths:
 
 ```bash
 export AUDIT_PLUGIN_ROOT="/absolute/installed/artur-plugins"
@@ -110,7 +110,7 @@ state initializer.
 
 ## Platform scope
 
-The runtime requires `python3`; the local integration targets macOS/Linux Claude Code and Codex. Codex selects `mcp/codex.json` through its native manifest; Claude uses `.mcp.json`. There are no bundled lifecycle hooks. Verify installed skill discovery, MCP launch, and independent role handoff in the target host; package validation alone does not prove runtime behavior. Hosted/Cowork and native Windows runtime parity remain unverified.
+The runtime requires `python3`; the local integration targets macOS/Linux Claude Code and Codex. Neither host auto-registers MCP or hooks. `mcp/codex.json` and `mcp/audit_mcp_server.py` remain available for explicitly requested manual setup. Hosted/Cowork and native Windows runtime parity remain unverified.
 
 ## Files
 

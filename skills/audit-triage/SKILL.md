@@ -6,7 +6,7 @@ tags: [audit, triage, priority, dependency, roadmap]
 
 # Audit Triage
 
-Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Prefer the structured `audit_*` MCP tools with an explicit absolute `root`. For CLI fallback, resolve `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there.
+Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Use the bundled Python CLI after resolving `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there. A separately configured `audit_*` MCP server is an optional equivalent with an explicit absolute `root`.
 
 Purpose: turn an audit queue into executable ordering. A prose plan is optional; `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for resolution` must consume the metadata.
 

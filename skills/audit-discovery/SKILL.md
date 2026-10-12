@@ -6,7 +6,7 @@ tags: [audit, discovery, ticket, evidence, workflow]
 
 # Audit Discovery
 
-Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Prefer the structured `audit_*` MCP tools with an explicit absolute `root`. For CLI fallback, resolve `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there.
+Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Use the bundled Python CLI after resolving `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there. A separately configured `audit_*` MCP server is an optional equivalent with an explicit absolute `root`.
 
 Purpose: convert concrete findings into audit tickets. The CLI/MCP runtime is the source of truth; Markdown files are the human-readable record.
 
@@ -25,7 +25,7 @@ Ticketize and Audit sweep apply when the user requests audit records.
 
 ## First move for Ticketize or Audit sweep
 
-Prefer MCP tools when available. CLI fallback:
+Use the Python CLI by default (or equivalent tools if MCP was configured manually):
 
 ```bash
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" init

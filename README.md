@@ -7,8 +7,9 @@ operations, handover, plugin authoring, and installation management share one pa
 
 Skills load for the requested task; installing the toolkit does not authorize
 changes, initiate an audit, run every workflow, or enable external services.
-The existing audit engine, MCP server, role boundaries, references, templates,
-and helper tools are retained. There are no nested standalone plugins.
+The audit engine, optional MCP server, role boundaries, references, templates,
+and helper tools are retained. Installing the toolkit starts no servers or hooks.
+There are no nested standalone plugins.
 
 ## Skill catalog
 
@@ -16,7 +17,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 
 | Workflow | Skills | Requirements |
 |---|---|---|
-| Audit and review | `deep-review`, `feature-scattering`, `audit-init`, `audit-status`, `audit-next`, `audit-discovery`, `audit-triage`, `audit-resolution`, `audit-verification` | Python for local audit/MCP and scanning; Git history optional |
+| Audit and review | `deep-review`, `feature-scattering`, `audit-init`, `audit-status`, `audit-next`, `audit-discovery`, `audit-triage`, `audit-resolution`, `audit-verification` | Python for requested audit lifecycle and scanning; optional MCP setup; Git history optional |
 | Architecture and recovery | `architect`, `recover` | Source/requirements for the requested scope |
 | Prompts | `design-prompts` | Model/tool contract when target-specific |
 | Human procedures | `human-execution-runbook` | Actual operational inputs and execution evidence |
@@ -30,8 +31,9 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 
 Python 3.10+ is required for the bundled runtime and helpers. Other skills do not
 require Python merely to read their instructions. No new agent framework or
-mandatory session-start methodology is installed. No lifecycle hooks are bundled;
-audit transitions through MCP/CLI are checked by the canonical runtime.
+mandatory session-start methodology is installed. No lifecycle hooks or MCP
+servers are registered automatically. Audit transitions through the CLI or an
+explicitly configured MCP server are checked by the canonical runtime.
 
 For plugin installation and installed-copy updates, use
 `/artur-plugins:install-agent-plugins` in Claude Code or `$install-agent-plugins`
@@ -50,12 +52,10 @@ from the checkout/archive before installation.
 
 Both marketplaces contain **one entry pointing to this repository root**. Claude
 uses `.claude-plugin/plugin.json`. Codex uses `.codex-plugin/plugin.json` to
-select the shared skills and MCP config. Neither host registers bundled hooks.
-The existing native Codex manifest is retained for explicit component selection;
-there is no portable root `plugin.json`.
-
-Check installed MCP behavior in the target host. Package validation and direct
-helper execution do not prove installed-host behavior.
+select shared skills. Neither host registers an MCP server or lifecycle hooks.
+The native Codex manifest is retained; there is no portable root `plugin.json`.
+The optional MCP implementation remains in `mcp/` for separately authorized
+manual configuration. Normal audit skills use `scripts/audit.py` directly.
 
 ---
 
@@ -194,6 +194,17 @@ From the toolkit repository root, keep the target project explicit:
 python3 scripts/audit.py --root "/absolute/target/project" <command> [options]
 ```
 
+If MCP tools are explicitly needed, register the preserved server separately
+with your host rather than enabling it for every plugin session. For example,
+Claude Code can register the server from a known local checkout:
+
+```bash
+claude mcp add --scope user audit-workflow -- python3 /absolute/path/to/claude-plugins/mcp/audit_mcp_server.py
+```
+
+This opt-in registration belongs to the host, not the plugin; remove it there
+when no longer needed. `mcp/codex.json` is retained as an optional Codex adapter.
+
 ### Architecture and recovery
 Use the canonical architecture workflow for normal architecture work:
 
@@ -201,7 +212,7 @@ Use the canonical architecture workflow for normal architecture work:
 /artur-plugins:architect
 ```
 
-The architect now includes optional epic, milestone, and roadmap output profiles plus focused CLI-contract guidance. Damaged-project assessment/recovery is a separate entry point:
+The architect now includes optional change plan, epic, milestone, and roadmap output profiles plus focused CLI-contract guidance. A change plan is a source-grounded, before-to-after edit plan for an existing codebase. Damaged-project assessment/recovery is a separate entry point:
 
 ```text
 /artur-plugins:recover
@@ -440,11 +451,11 @@ The skills can load as plugin content, but its practical repository-analysis wor
 
 ### Audit and review
 
-The audit subsystem contains shared skills, Claude role agents, a local stdio MCP server, and a Python runtime:
+The audit subsystem contains shared skills, Claude role agents, and a Python runtime. The stdio MCP server is available only through manual opt-in:
 
-- **Claude Code:** skills, role agents, MCP tools, and Python runtime are packaged together.
-- **Claude Chat:** skill content can load, while role agents and the local MCP runtime do not provide the same lifecycle runtime.
-- **Cowork:** agents and a local MCP server can load when the session runs on your computer, but this repository does not claim the `audit-workflow` Cowork runtime as verified; `python3` is required there.
+- **Claude Code:** skills and role agents load; the bundled Python CLI runs when requested. No audit server starts automatically.
+- **Claude Chat:** skills load as instructions; local Python execution requires a capable host.
+- **Cowork:** agents load, while CLI-backed workflows require a host with Python and project filesystem access. No audit connector is bundled.
 
 The plugin deliberately has no top-level `bin/` directory because Claude Chat/Cowork installation rejects plugins that contain one.
 
@@ -459,7 +470,7 @@ The native repository marketplace is:
 ```
 
 It exposes the same single toolkit and shared skills. Codex selects its native
-manifest and shared MCP runtime. No lifecycle hooks are bundled.
+manifest without automatic MCP registration or lifecycle hooks.
 
 ## 3.1 Install from GitHub
 
@@ -686,7 +697,7 @@ and use the supported reinstall/reload flow. `codex plugin marketplace upgrade`
 refreshes Git marketplaces, not this local directory source. Preserve the selected
 source, enablement and relevant setup across a reinstall. Do not edit host cache
 files by hand or use sparse checkout for this root plugin that omits its shared
-skills, MCP, references or scripts.
+skills, references or scripts.
 
 ## 4.3 Repo-local Codex enablement
 
@@ -710,12 +721,12 @@ source is `./`. Claude uses its own catalog format; Codex uses its native catalo
 format. Neither points at a nested product or duplicates the skills/runtime.
 
 `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` carry synchronized
-identity, version, and description. Codex selects `./skills/` and
-`./mcp/codex.json`; Claude uses the default `skills/`, `agents/`, and
-`.mcp.json` locations. Neither host has bundled hook definitions.
+identity, version, and description. Codex selects `./skills/`; Claude uses the
+default `skills/` and `agents/` directories. Neither host auto-registers hooks
+or MCP servers. The optional `mcp/codex.json` is not a manifest reference.
 
-The native Codex manifest remains the chosen format for this toolkit's explicit
-skills/MCP paths. New unrelated plugins may use other supported manifest formats.
+The native Codex manifest remains the chosen format for this toolkit's shared
+skills. New unrelated plugins may use other supported manifest formats.
 
 Sources: [OpenAI packaging](https://developers.openai.com/plugins/build/plugins),
 [Codex loader](https://github.com/openai/codex/blob/main/codex-rs/core-plugins/src/loader.rs),
@@ -734,10 +745,9 @@ claude-plugins/
 │   └── plugin.json          # Codex identity and component selection
 ├── .agents/plugins/
 │   └── marketplace.json     # one entry -> ./
-├── .mcp.json                # Claude -> shared audit server
 ├── mcp/
-│   ├── codex.json           # Codex -> same audit server
-│   └── audit_mcp_server.py
+│   ├── codex.json           # optional manual Codex MCP configuration
+│   └── audit_mcp_server.py  # optional shared MCP implementation
 ├── scripts/                 # audit runtime, scanner, validator
 ├── skills/                  # shared independent skill entry points
 ├── agents/                  # Claude audit role agents
@@ -760,13 +770,13 @@ checkout; generated project state belongs to the selected external workspace.
 - Requires `python3`; the local integrations target macOS/Linux Claude Code and Codex.
 - `feature-scattering` helper requires Python 3.10+.
 - Native Windows is not claimed as a supported full-runtime target by this repository version.
-- Cowork runtime behavior for the local stdio MCP server is not claimed as verified.
-- Included in the unified toolkit for both hosts. Codex uses the native manifest; local Python, explicit project roots, and installed-host MCP verification are still required.
+- No bundled MCP server starts automatically; manual MCP setup is optional.
+- Included in the unified toolkit for both hosts. The CLI needs local Python and an explicit project root.
 - `deep-review` and `feature-scattering` are read-only by default and do not replace the canonical audit lifecycle/runtime.
 
 ## Architecture and recovery
 
-- Adds optional implementation-planning profiles and `/artur-plugins:recover` while keeping `/artur-plugins:architect` canonical.
+- Adds optional implementation-planning profiles (change plan, epic, milestone, roadmap) and `/artur-plugins:recover` while keeping `/artur-plugins:architect` canonical.
 - No additional local runtime dependency.
 
 ## Prompt design
