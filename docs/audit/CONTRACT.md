@@ -244,8 +244,6 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" ve
 ## Verification History
 ```
 
-Backward compatibility: parsers may read legacy `**Status:**`, `**Date:**`, and `**Commit Verified At:**`, but new writes must use the canonical fields above.
-
 Record metadata occupies the header before the first `##` section. Body evidence,
 fenced examples and status history do not provide missing header values. Read and
 update the first matching header field, preserving examples in the body. Empty
@@ -286,19 +284,27 @@ Tickets also carry machine-readable fields:
 **P-level:** `P0|P1|P2|P3`
 **Decision:** `FIX|DEFER|WONTFIX|DUPLICATE`
 **Phase:** `critical-path|quick-wins|feature-parity|backlog|...`
+**Fix Group:** `optional-shared-edit-slug`
 ```
 
-`audit_next(for_role="resolution")` or the CLI equivalent consumes this metadata plus dependency edges.
+The ticket header is the only active triage state. New tickets start with
+`Decision: FIX`, not a new lifecycle status. Use `triage set` to change the
+decision, priority, phase, or optional `Fix Group`; use `deps add/remove` to
+change dependencies. `triage-*.md`, roadmaps and dependency diagrams are
+read-only projections of exported state. Editing those files never changes
+`next`, `export`, or `doctor`.
 
-Nonempty ticket header values take precedence over the latest `triage-*.md`
-report in exports and scheduling. The report is a compatibility fallback for
-missing legacy values only. Apply triage decisions through `triage set`; a stale
-report cannot override the updated ticket. `Decision` defaults to `FIX` only when
-neither source supplies a value. `triage set` inserts supplied fields when a
-legacy ticket lacks them. Updating either Impact or Effort recalculates Priority
-and P-level when both ratings are available; explicit `--p-level` takes precedence.
-The resolution queue includes `Decision: FIX` only. Verification can finish
-already-ready tickets regardless of their triage decision.
+Updating either Impact or Effort recalculates Priority and P-level when both
+ratings are present; explicit `--p-level` overrides the calculated level.
+`doctor` detects missing/invalid decisions and inconsistent priority scores.
+The resolution queue includes only `Decision: FIX` tickets with satisfied
+dependencies. Verification can finish ready tickets regardless of Decision.
+
+`next --for resolution` returns the highest-priority ready FIX ticket plus
+`related_tickets` for other ready FIX tickets with the same `Fix Group`, or the
+same source file and compatible phase. These are suggestions for a shared edit
+session, not an instruction to resolve extra tickets automatically. Dependencies
+and explicit DEFER/WONTFIX/DUPLICATE decisions always take precedence.
 
 ---
 
@@ -318,9 +324,9 @@ Equivalent ticket field:
 **Depends On:** `003`
 ```
 
-`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `INVALID`).
+`audit_doctor` (or CLI `doctor`) rejects missing dependency targets, cycles, and dependencies that are unusable (`FAIL`, `BLOCKED`, `WONTFIX`, `INVALID`). Only a PASS dependency unblocks a dependent ticket.
 
-The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. Readers treat an edge recorded on only one side as a full edge. `audit_doctor` warns about such edges, and `audit_doctor(fix=true)` writes the missing side.
+The edge is recorded on both tickets: `Blocks` on the blocker and `Depends On` on the blocked ticket. `audit_doctor` reports one-sided edges as inconsistent state, and `audit_doctor(fix=true)` synchronizes ticket headers. No dependency report is consulted for scheduling.
 
 ---
 

@@ -18,4 +18,4 @@ before acting. Resolve both absolute paths; do not rely on shell defaults.
 
 You are the triage role in the Audit Workflow plugin.
 
-Read canonical state with `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json`. Set priority and dependency metadata through `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" triage set` and `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" deps add`. Do not create findings, do not edit implementation code, and do not resolve or verify tickets.
+Read canonical state with `python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" export --json`. Investigate overlapping source files, shared causes, and dependencies. Set executable decisions, priority, phase and coherent fix groups through `triage set`; record prerequisites through `deps add/remove`. Check `next --for resolution --json` and its related-ticket suggestions. Generate any reports only after writing ticket metadata. Do not create findings, edit implementation code, resolve or verify tickets.

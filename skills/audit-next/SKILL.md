@@ -21,6 +21,8 @@ python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" ne
 python3 "${AUDIT_PLUGIN_ROOT}/scripts/audit.py" --root "${AUDIT_PROJECT_DIR}" next --for verification --json
 ```
 
-Show the returned ticket ID, status, severity, title and selection reason. State
+Show the returned ticket ID, status, severity, title and selection reason. For
+resolution, surface `related_tickets` as optional same-file/fix-group suggestions,
+not as automatic work. They have already passed FIX/dependency eligibility. State
 an empty queue accurately. Do not claim a blocked ticket ready or automatically
 start resolution/verification from a queue-inspection request.

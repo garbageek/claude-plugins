@@ -16,7 +16,7 @@ Common commands:
     status <id>... [--json]
     summary [--json]
     next --for resolution|verification [--category CAT] [--severity SEV]
-    doctor [--fix] [--strict]
+    doctor [--fix]
     export [--json]
     baseline create|compare [--tag TAG]
 
@@ -32,7 +32,7 @@ import os
 import re
 import subprocess
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -163,7 +163,9 @@ _PLACEHOLDER_RE = re.compile(
 )
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "?": 4, "unknown": 4}
 _PLEVEL_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 4, "?": 4}
-_PASS_LIKE = {"PASS", "WONTFIX", "INVALID"}
+_PASS_LIKE = {"PASS"}
+TRIAGE_DECISIONS = {"FIX", "DEFER", "WONTFIX", "DUPLICATE"}
+FIX_GROUP_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class AuditError(Exception):
@@ -309,27 +311,14 @@ Use `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project exp
 def _triage_readme_text() -> str:
     return """# Audit Triage
 
-Triage metadata is executable: `audit_next(for_role="resolution")` or CLI `next --for resolution` consumes priority and dependency data.
+Ticket headers own triage decisions, priority, dependencies, and optional fix groups.
+Triage reports and roadmaps summarize the exported ticket state; editing reports does not change scheduling.
 
-Use `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project triage set ...` and `deps add ...`. If MCP is explicitly registered, `audit_triage_set` and `audit_dependency_add` are also available.
+Apply decisions using `python3 /path/to/artur-plugins/scripts/audit.py --root /path/to/project triage set ...` and `deps add ...`. If MCP is explicitly registered, `audit_triage_set` and `audit_dependency_add` are also available.
+
+`next --for resolution` selects the highest-priority unblocked FIX ticket and suggests available tickets in the same fix group or source file for a shared edit session.
 
 Dependency semantics: `003 blocks 001`, so ticket 001 waits until ticket 003 is resolved.
-"""
-
-
-def _dependencies_text() -> str:
-    return """# Dependencies
-
-Canonical dependency syntax:
-
-```text
-# Real entries use this form; keep examples commented in onboarding docs.
-# 003 blocks 001
-```
-
-Meaning: ticket 001 depends on ticket 003.
-
-Use CLI `deps add 001 --depends-on 003`, or `audit_dependency_add` if MCP is explicitly registered.
 """
 
 
@@ -354,8 +343,6 @@ def _initialize_audit_tree(write_docs: bool = True) -> dict[str, Any]:
             created_files.append(_rel(ROOT / "audit" / "README.md"))
         if _write_if_missing(TRIAGE_DIR / "README.md", _triage_readme_text()):
             created_files.append(_rel(TRIAGE_DIR / "README.md"))
-        if _write_if_missing(TRIAGE_DIR / "dependencies.md", _dependencies_text()):
-            created_files.append(_rel(TRIAGE_DIR / "dependencies.md"))
     return {
         "ok": True,
         "root": str(ROOT),
@@ -593,18 +580,23 @@ def _archive_verification(text: str, *, include_resolution: bool) -> str:
     sections = ["Criteria Results", "Verification Checklist", "Evidence", "Test Verification", "Verdict"]
     if include_resolution:
         sections = ["Resolution Evidence", "Current State", *sections]
-    fields = ["Verified Date", "Verified By", "Verified Commit", "Date", "Commit Verified At"]
-    if any(_has_nonplaceholder_content(text, f"## {section}") for section in sections) or any(
-        _field(text, label) for label in fields
-    ):
+    fields = ["Verified Date", "Verified By", "Verified Commit"]
+    proof_sections = [section for section in sections if section != "Verdict"]
+    # The default OPEN verdict and unchecked checklist are not verification
+    # proof. Archiving them on the first resolve creates meaningless history.
+    has_proof = any(_has_nonplaceholder_content(text, f"## {section}") for section in proof_sections)
+    has_proof |= any(_field(text, label) for label in ["Resolved By", "Fix Commit", *fields])
+    if has_proof:
         snapshot = [f"### Archived at {datetime.now().isoformat(timespec='seconds')}"]
-        for label in ["Verification Status", "Status", "Resolved Date", "Resolved By", "Fix Commit", *fields]:
+        for label in ["Verification Status", "Resolved Date", "Resolved By", "Fix Commit", *fields]:
             value = _field(text, label)
             if value:
                 snapshot.append(f"**{label}:** `{value}`")
         for section in sections:
             content = _section_content(text, f"## {section}")
-            if content:
+            if content and _has_nonplaceholder_content(text, f"## {section}"):
+                if section == "Verdict" and _field(text, "Verification Status") == "OPEN":
+                    continue
                 # Archived headings must not be parsed as active ## sections.
                 content = re.sub(r"^(#{2,})[ \t]", r"#\1 ", content, flags=re.MULTILINE)
                 snapshot.append(f"#### {section}\n\n{content}")
@@ -640,8 +632,8 @@ def parse_ticket(path: Path) -> dict[str, Any]:
     name = path.name
     num, category, slug = parse_ticket_filename(name)
     text = path.read_text(encoding="utf-8", errors="replace")
-    severity = _field(text, "Severity") or _field(text, "severity") or "?"
-    module = _field(text, "Module") or _field(text, "Target Module") or "?"
+    severity = _field(text, "Severity") or "?"
+    module = _field(text, "Module") or "?"
     title_m = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
     title = title_m.group(1).strip() if title_m else slug
     return {
@@ -657,9 +649,10 @@ def parse_ticket(path: Path) -> dict[str, Any]:
         "impact": _field(text, "Impact"),
         "effort": _field(text, "Effort"),
         "priority": _field(text, "Priority"),
-        "p_level": (_field(text, "P-level") or _field(text, "P Level") or "").upper(),
-        "decision": (_field(text, "Decision") or "FIX").upper(),
+        "p_level": _field(text, "P-level").upper(),
+        "decision": _field(text, "Decision").upper(),
         "phase": _field(text, "Phase"),
+        "fix_group": _field(text, "Fix Group"),
         "path": str(path),
         "_path": path,
         "_text": text,
@@ -670,72 +663,23 @@ def parse_verification(path: Path) -> dict[str, Any]:
     name = path.name
     num = _ticket_num(name)
     text = path.read_text(encoding="utf-8", errors="replace")
-    status = _field(text, "Verification Status") or _field(text, "Status") or "?"
+    status = _field(text, "Verification Status") or "?"
     return {
         "num": num,
         "id": f"{num:03d}" if num is not None else "???",
         "status": status.upper(),
         "resolved_date": _field(text, "Resolved Date"),
         "resolved_by": _field(text, "Resolved By"),
-        "verified_date": _field(text, "Verified Date") or _field(text, "Date") or "",
+        "verified_date": _field(text, "Verified Date"),
         "verified_by": _field(text, "Verified By") or "",
         "commit": _field(text, "Fix Commit") or "",
-        "verified_commit": _field(text, "Verified Commit") or _field(text, "Commit Verified At") or "",
+        "verified_commit": _field(text, "Verified Commit"),
         "verdict": _section_content(text, "## Verdict"),
         "evidence": _section_content(text, "## Evidence"),
         "path": str(path),
         "_path": path,
         "_text": text,
     }
-
-
-def _load_triage_metadata() -> dict[str, dict[str, Any]]:
-    """Parse latest triage priority matrix if present."""
-    meta: dict[str, dict[str, Any]] = {}
-    docs = sorted(TRIAGE_DIR.glob("triage-*.md")) if TRIAGE_DIR.is_dir() else []
-    if not docs:
-        return meta
-    text = docs[-1].read_text(encoding="utf-8", errors="replace")
-    for line in text.splitlines():
-        if not line.strip().startswith("|") or "---" in line:
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 7 or cells[0].lower() == "ticket":
-            continue
-        ticket_id = cells[0].strip().zfill(3)
-        if not ticket_id.isdigit():
-            continue
-        # Template columns: Ticket Category Severity Impact Effort Priority P-level Group [Decision]
-        meta[ticket_id] = {
-            "impact": cells[3] if len(cells) > 3 else "",
-            "effort": cells[4] if len(cells) > 4 else "",
-            "priority": cells[5] if len(cells) > 5 else "",
-            "p_level": cells[6].upper() if len(cells) > 6 else "",
-            "phase": cells[7] if len(cells) > 7 else "",
-            "decision": cells[8].upper() if len(cells) > 8 else "FIX",
-        }
-    return meta
-
-
-def _load_dependency_edges() -> dict[str, set[str]]:
-    """Return dependency map: ticket -> dependencies."""
-    deps: dict[str, set[str]] = defaultdict(set)
-    dep_path = TRIAGE_DIR / "dependencies.md"
-    if not dep_path.exists():
-        return deps
-    text = dep_path.read_text(encoding="utf-8", errors="replace")
-    for line in text.splitlines():
-        line = line.strip()
-        m = re.match(r"^(\d+)\s+blocks\s+(\d+)$", line)
-        if m:
-            blocker, blocked = m.group(1).zfill(3), m.group(2).zfill(3)
-            deps[blocked].add(blocker)
-            continue
-        m = re.match(r"^(\d+)\s+depends_on\s+(\d+)$", line)
-        if m:
-            blocked, blocker = m.group(1).zfill(3), m.group(2).zfill(3)
-            deps[blocked].add(blocker)
-    return deps
 
 
 def load_records() -> list[dict[str, Any]]:
@@ -745,17 +689,11 @@ def load_records() -> list[dict[str, Any]]:
         if v["num"] is not None:
             verif_index[v["num"]] = v
 
-    triage_meta = _load_triage_metadata()
-    dependency_edges = _load_dependency_edges()
-
     records: list[dict[str, Any]] = []
     for path in _all_ticket_files():
         t = parse_ticket(path)
         num = t["num"]
         v = verif_index.get(num, {}) if num is not None else {}
-        tid = t["id"]
-        meta = triage_meta.get(tid, {})
-        depends_on = sorted(set(t["depends_on"]) | dependency_edges.get(tid, set()))
         record = {
             **{k: v2 for k, v2 in t.items() if not k.startswith("_")},
             "status": v.get("status", "UNVERIFIED"),
@@ -768,33 +706,10 @@ def load_records() -> list[dict[str, Any]]:
             "verified_commit": v.get("verified_commit", ""),
             "verdict": v.get("verdict", ""),
             "verification_evidence": v.get("evidence", ""),
-            "depends_on": depends_on,
-            "blocks": t["blocks"],
-            "impact": t["impact"] or meta.get("impact", ""),
-            "effort": t["effort"] or meta.get("effort", ""),
-            "priority": t["priority"] or meta.get("priority", ""),
-            "p_level": t["p_level"] or meta.get("p_level", ""),
-            "decision": (_field(t["_text"], "Decision") or meta.get("decision") or "FIX").upper(),
-            "phase": t["phase"] or meta.get("phase", ""),
             "ticket_hash": _hash_file(path),
             "verification_hash": _hash_file(Path(v["path"])) if v.get("path") else "",
         }
         records.append(record)
-
-    # Dependency edges are symmetric. Ticket files written by 1.0.x may carry
-    # only one side (for example `Blocks` on the blocker), so merge both
-    # directions before scheduling or exporting.
-    by_id = {r["id"]: r for r in records}
-    for r in records:
-        for blocked in r["blocks"]:
-            target = by_id.get(blocked)
-            if target is not None and r["id"] not in target["depends_on"]:
-                target["depends_on"] = sorted(set(target["depends_on"]) | {r["id"]})
-    for r in records:
-        for dep in r["depends_on"]:
-            target = by_id.get(dep)
-            if target is not None and r["id"] not in target["blocks"]:
-                target["blocks"] = sorted(set(target["blocks"]) | {r["id"]})
 
     ticket_nums = {r["num"] for r in records if r["num"] is not None}
     for v in verif_index.values():
@@ -929,7 +844,7 @@ def _validate_transition_requirements(
         ok, missing = _pass_ready(ticket_path, prospective, criteria)
         if not ok:
             raise AuditError("PASS requirements not met: " + "; ".join(missing), 2)
-        if not (verified_commit or _field(verif_text, "Verified Commit") or _field(verif_text, "Commit Verified At")):
+        if not (verified_commit or _field(verif_text, "Verified Commit")):
             raise AuditError("PASS requires --verified-commit or existing Verified Commit", 2)
     elif target in {"WONTFIX", "INVALID", "BLOCKED"}:
         rationale = reason or verdict or _section_content(verif_text, "## Verdict")
@@ -1033,7 +948,8 @@ def _ticket_text(
         f"**Priority:** ``\n"
         f"**P-level:** ``\n"
         f"**Decision:** `FIX`\n"
-        f"**Phase:** ``\n\n"
+        f"**Phase:** ``\n"
+        f"**Fix Group:** ``\n\n"
         f"## Description\n\n{desc}\n\n"
         f"## Expected Behavior\n\n{exp}\n\n"
         f"## Actual Behavior\n\n{act}\n\n"
@@ -1328,7 +1244,7 @@ def _apply_transition_to_file(
         )
         reopened = target_status == "OPEN" and current != "OPEN"
         regressed = target_status == "REGRESS" and current == "PASS"
-        previous_revision = _field(text, "Verified Commit") or _field(text, "Commit Verified At")
+        previous_revision = _field(text, "Verified Commit")
         new_revision = target_status in VERIFICATION_STATUSES and bool(
             verified_commit and verified_commit != previous_revision
         )
@@ -1354,7 +1270,6 @@ def _apply_transition_to_file(
 
     today = date.today().isoformat()
     new = _replace_field(text, "Verification Status", target_status)
-    new = _replace_field(new, "Status", target_status)
 
     if target_status == "READY_FOR_VERIFICATION":
         new = _ensure_field_after(new, "Verification Status", "Resolved Date", today)
@@ -1372,12 +1287,9 @@ def _apply_transition_to_file(
     elif target_status in VERIFICATION_STATUSES:
         if target_status in {"PASS", "PARTIAL", "FAIL", "REGRESS", "INVALID"}:
             new = _replace_field(new, "Verified Date", today)
-            new = _replace_field(new, "Date", today)
             new = _replace_field(new, "Verified By", actor)
         if verified_commit:
             new = _ensure_field_after(new, "Fix Commit", "Verified Commit", verified_commit)
-            if re.search(r"^\*\*Commit Verified At:\*\*", new, flags=re.MULTILINE):
-                new = _replace_field(new, "Commit Verified At", verified_commit)
         if evidence:
             new = _append_to_section(new, "## Evidence", "\n".join(f"- {x}" for x in evidence))
         if criteria:
@@ -1569,6 +1481,37 @@ def _int_or_default(value: Any, default: int) -> int:
         return default
 
 
+def _related_resolution_tickets(top: dict[str, Any], candidates: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Offer nearby ready-to-fix tickets; never turn suggestions into implicit work."""
+    group = top.get("fix_group") or ""
+    module = top.get("module") or ""
+    phase = top.get("phase") or ""
+    related: list[dict[str, str]] = []
+    for candidate in candidates:
+        if candidate["id"] == top["id"]:
+            continue
+        if group and candidate.get("fix_group") == group:
+            reason = "fix-group"
+        elif (
+            not group
+            and not candidate.get("fix_group")
+            and module not in {"", "?"}
+            and candidate.get("module") == module
+            and (not phase or not candidate.get("phase") or candidate.get("phase") == phase)
+        ):
+            reason = "same-module"
+        else:
+            continue
+        related.append({
+            "id": candidate["id"],
+            "title": candidate["title"],
+            "module": candidate.get("module", ""),
+            "p_level": candidate.get("p_level", ""),
+            "reason": reason,
+        })
+    return related
+
+
 def cmd_next(args: argparse.Namespace) -> None:
     records = load_records()
     status_by_id = {r["id"]: r.get("status", "") for r in records}
@@ -1589,7 +1532,7 @@ def cmd_next(args: argparse.Namespace) -> None:
             continue
         if args.severity and str(r.get("severity", "")).lower() != args.severity.lower():
             continue
-        if args.for_role == "resolution" and str(r.get("decision", "FIX")).upper() != "FIX":
+        if args.for_role == "resolution" and r.get("decision") != "FIX":
             continue
         blocked = _is_blocked(r, status_by_id)
         if blocked and args.for_role == "resolution":
@@ -1615,6 +1558,7 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     candidates.sort(key=sort_key)
     top = candidates[0]
+    related = _related_resolution_tickets(top, candidates) if args.for_role == "resolution" else []
     if getattr(args, "json", False):
         _json_print({
             "ok": True,
@@ -1622,6 +1566,7 @@ def cmd_next(args: argparse.Namespace) -> None:
             "ticket": top,
             "queue_size": len(candidates),
             "blocked_skipped": blocked_skipped,
+            "related_tickets": related,
         })
         return
     print(
@@ -1630,6 +1575,10 @@ def cmd_next(args: argparse.Namespace) -> None:
     )
     if top.get("depends_on"):
         print(f"Depends on: {', '.join(top['depends_on'])}")
+    if related:
+        print("Related FIX tickets available for the same edit session:")
+        for candidate in related:
+            print(f"  {candidate['id']} [{candidate['p_level'] or 'P?'}] {candidate['title']} ({candidate['reason']})")
     if len(candidates) > 1:
         print(f"({len(candidates) - 1} more ticket(s) in queue)")
 
@@ -1698,11 +1647,29 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
             issues.append(f"Invalid category in {p.name}: {t['category']}")
         if t["severity"] not in VALID_SEVERITIES and t["severity"] != "?":
             issues.append(f"Invalid severity in {p.name}: {t['severity']}")
+        if t["decision"] not in TRIAGE_DECISIONS:
+            issues.append(f"Invalid or missing Decision in {p.name}: {t['decision']!r}")
+        if t["p_level"] and t["p_level"] not in {"P0", "P1", "P2", "P3"}:
+            issues.append(f"Invalid P-level in {p.name}: {t['p_level']}")
+        group = t["fix_group"]
+        if group and not FIX_GROUP_PATTERN.fullmatch(group):
+            issues.append(f"Invalid Fix Group in {p.name}: {group!r}")
+        impact, effort = t["impact"], t["effort"]
+        if impact and (not impact.isdigit() or not 1 <= int(impact) <= 5):
+            issues.append(f"Invalid Impact in {p.name}: {impact!r}")
+        if effort and (not effort.isdigit() or not 1 <= int(effort) <= 5):
+            issues.append(f"Invalid Effort in {p.name}: {effort!r}")
+        if impact and effort and impact.isdigit() and effort.isdigit():
+            expected_priority = int(impact) * (6 - int(effort))
+            if t["priority"] != str(expected_priority):
+                issues.append(f"Inconsistent Priority in {p.name}: expected {expected_priority}, got {t['priority']!r}")
+        elif t["priority"]:
+            issues.append(f"Priority in {p.name} requires both Impact and Effort")
 
     for p in verif_paths:
         v = parse_verification(p)
         status = v["status"]
-        if status not in VALID_STATUSES and status not in {"?", "UNKNOWN", ""}:
+        if status not in VALID_STATUSES:
             issues.append(f"Invalid status in {p.name}: {status}")
         ticket_path = ticket_by_num.get(v["num"])
         if ticket_path:
@@ -1743,13 +1710,13 @@ def _doctor_findings() -> tuple[list[str], list[str]]:
         for dep in r.get("depends_on", []):
             if dep not in ids:
                 issues.append(f"Ticket {r['id']} depends on missing ticket {dep}")
-            elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "INVALID"}:
+            elif status_by_id.get(dep) in {"FAIL", "BLOCKED", "WONTFIX", "INVALID"}:
                 issues.append(f"Ticket {r['id']} depends on non-usable ticket {dep} ({status_by_id.get(dep)})")
 
     for blocker, blocked in _one_sided_dependency_edges():
-        warnings.append(
-            f"Dependency {blocker} blocks {blocked} is recorded on only one ticket; "
-            "scheduling uses it, `doctor --fix` writes the missing side"
+        issues.append(
+            f"Dependency {blocker} blocks {blocked} is not recorded on both tickets; "
+            "use `doctor --fix` to synchronize ticket fields"
         )
 
     visiting: set[str] = set()
@@ -1985,31 +1952,35 @@ def cmd_triage_set(args: argparse.Namespace) -> None:
     path = _ticket_for(num)
     if not path:
         raise AuditError(f"ticket {num:03d} not found", 1)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    if args.impact is not None:
-        text = _ensure_field_after(text, "Blocks", "Impact", str(args.impact))
-    if args.effort is not None:
-        text = _ensure_field_after(text, "Impact", "Effort", str(args.effort))
-    if args.impact is not None or args.effort is not None:
-        legacy = _load_triage_metadata().get(f"{num:03d}", {})
-        impact = _int_or_default(_field(text, "Impact") or legacy.get("impact"), 0)
-        effort = _int_or_default(_field(text, "Effort") or legacy.get("effort"), 0)
-        if 1 <= impact <= 5 and 1 <= effort <= 5:
-            # Materialize legacy fallback values so later report edits cannot
-            # silently change the inputs behind this calculated priority.
-            text = _ensure_field_after(text, "Blocks", "Impact", str(impact))
-            text = _ensure_field_after(text, "Impact", "Effort", str(effort))
-            priority = impact * (6 - effort)
-            text = _ensure_field_after(text, "Effort", "Priority", str(priority))
-            plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
-            text = _ensure_field_after(text, "Priority", "P-level", plevel)
-    if args.p_level:
-        text = _ensure_field_after(text, "Priority", "P-level", args.p_level.upper())
-    if args.decision:
-        text = _ensure_field_after(text, "P-level", "Decision", args.decision.upper())
-    if args.phase:
-        text = _ensure_field_after(text, "Decision", "Phase", args.phase)
-    path.write_text(text, encoding="utf-8")
+    if args.fix_group and args.fix_group.lower() != "none" and not FIX_GROUP_PATTERN.fullmatch(args.fix_group):
+        raise AuditError("--fix-group must be an alphanumeric slug (letters, numbers, ., _, -) or 'none'", 2)
+    with _create_lock_cm():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if args.impact is not None:
+            text = _replace_field(text, "Impact", str(args.impact))
+        if args.effort is not None:
+            text = _replace_field(text, "Effort", str(args.effort))
+        if args.impact is not None or args.effort is not None:
+            impact = _int_or_default(_field(text, "Impact"), 0)
+            effort = _int_or_default(_field(text, "Effort"), 0)
+            if 1 <= impact <= 5 and 1 <= effort <= 5:
+                priority = impact * (6 - effort)
+                text = _replace_field(text, "Priority", str(priority))
+                plevel = "P0" if priority >= 20 else "P1" if priority >= 12 else "P2" if priority >= 6 else "P3"
+                text = _replace_field(text, "P-level", plevel)
+            else:
+                text = _replace_field(text, "Priority", "")
+                text = _replace_field(text, "P-level", "")
+        if args.p_level:
+            text = _replace_field(text, "P-level", args.p_level)
+        if args.decision:
+            text = _replace_field(text, "Decision", args.decision)
+        if args.phase is not None:
+            text = _replace_field(text, "Phase", args.phase)
+        if args.fix_group is not None:
+            group = "" if args.fix_group.lower() == "none" else args.fix_group
+            text = _replace_field(text, "Fix Group", group)
+        path.write_text(text, encoding="utf-8")
     print(f"{num:03d}: triage metadata updated ({_rel(path)})")
 
 
@@ -2090,7 +2061,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init = sub.add_parser("init", help="Initialize audit workflow directories and onboarding docs")
     init.add_argument("--json", action="store_true", help="Output JSON only")
-    init.add_argument("--no-docs", action="store_true", help="Create directories only; skip README/dependency stubs")
+    init.add_argument("--no-docs", action="store_true", help="Create directories only; skip README files")
 
     create = sub.add_parser("create", help="Create a ticket; incomplete tickets are DRAFT")
     create.add_argument("category", help="Ticket category")
@@ -2179,7 +2150,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Check audit directory health")
     doctor.add_argument("--fix", action="store_true", help="Auto-fix missing verification stubs")
-    doctor.add_argument("--strict", action="store_true", help="Accepted for compatibility; checks are strict by default for non-DRAFT states")
 
     export = sub.add_parser("export", help="Export canonical ticket records")
     export.add_argument("--json", action="store_true")
@@ -2216,6 +2186,7 @@ def build_parser() -> argparse.ArgumentParser:
     triage_set.add_argument("--p-level", choices=["P0", "P1", "P2", "P3"])
     triage_set.add_argument("--decision", choices=["FIX", "DEFER", "WONTFIX", "DUPLICATE"])
     triage_set.add_argument("--phase")
+    triage_set.add_argument("--fix-group", help="Shared fix batch ID, or 'none' to clear")
 
     deps = sub.add_parser("deps", help="Manage ticket dependencies")
     deps_sub = deps.add_subparsers(dest="deps_command")
