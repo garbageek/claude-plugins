@@ -16,6 +16,12 @@ Resolve compatible shared-file/root-cause problems through one coherent source
 change, then record resolution evidence on each addressed ticket. Do not treat
 same-file suggestions as automatic authorization for extra work.
 
+For incorrect generated or computed results, repair the responsible producer or
+state owner rather than adding a rejection, filter, or approval gate that merely
+hides the defect. Keep a guard only when the accepted ticket or product contract
+independently requires it. Inspect affected consumers and relevant working paths
+before recording the correction.
+
 
 Use the shared [resolution proof guide](../../docs/audit/references/resolution-proof.md) to separate proposed checks, observed results, and verdicts, including whether corrected source is active in the relevant running instance. Keep the existing acceptance gates and user-authorized validation scope; do not generate tests or restart services implicitly.
 
