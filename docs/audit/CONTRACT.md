@@ -249,7 +249,7 @@ fenced examples and status history do not provide missing header values. Read an
 update the first matching header field, preserving examples in the body. Empty
 header fields must not consume the following line.
 
-Lifecycle gates are enforced by the CLI and its MCP wrapper, not by editor hooks. Use the runtime for lifecycle writes. Section parsing ignores headings inside fenced code and comments; archival preserves quoted proof. Local CLI writers share a lock and stage complete record files before replacing them. Caught I/O failures restore previously replaced files; this is not a process-crash transaction across multiple files.
+Lifecycle gates are enforced by the CLI and its MCP wrapper, not by editor hooks. Use the runtime for lifecycle writes. Section parsing ignores headings inside fenced code and comments; archival preserves quoted proof. Local CLI commands wait up to 10 seconds for a shared/exclusive project lock and stage complete record files before replacing them. Caught I/O failures restore previously replaced files; this is not a process-crash transaction across multiple files.
 
 
 ---

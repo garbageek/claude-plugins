@@ -26,12 +26,14 @@ Run from the project root directory, or pass --root /path/to/project. The plugin
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import tempfile
 from graphlib import CycleError, TopologicalSorter
 from collections import Counter
@@ -397,7 +399,7 @@ def _initialize_audit_tree(write_docs: bool = True) -> dict[str, Any]:
 
 @contextmanager
 def _create_lock_cm(*, read_only: bool = False):
-    """Serialize local CLI access on POSIX and Windows; never silently skip a failed lock."""
+    """Serialize CLI access, waiting briefly on an active writer before failing."""
     global _LOCK_DEPTH
     if _LOCK_DEPTH:
         yield
@@ -409,35 +411,51 @@ def _create_lock_cm(*, read_only: bool = False):
         CREATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
     handle = CREATE_LOCK.open("rb" if read_only else "a+b")
     locked = False
+    wait_seconds = 10.0
+    deadline = time.monotonic() + wait_seconds
     try:
         try:
             if os.name == "nt":
                 import msvcrt
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                mode = msvcrt.LK_NBRLCK if read_only else msvcrt.LK_NBLCK
             else:
                 import fcntl
-                mode = fcntl.LOCK_SH if read_only else fcntl.LOCK_EX
-                fcntl.flock(handle.fileno(), mode | fcntl.LOCK_NB)
-            locked = True
-        except (OSError, ImportError) as exc:
-            raise AuditError(f"audit lock unavailable: {CREATE_LOCK}: {exc}", 1) from exc
+                mode = (fcntl.LOCK_SH if read_only else fcntl.LOCK_EX) | fcntl.LOCK_NB
+        except ImportError as exc:
+            raise AuditError(f"audit locking unavailable: {CREATE_LOCK}: {exc}", 1) from exc
+        while not locked:
+            try:
+                if os.name == "nt":
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), mode, 1)
+                else:
+                    fcntl.flock(handle.fileno(), mode)
+                locked = True
+            except OSError as exc:
+                busy = exc.errno in (errno.EACCES, errno.EAGAIN) or getattr(exc, "winerror", None) in (32, 33)
+                if not busy:
+                    raise AuditError(f"audit lock unavailable: {CREATE_LOCK}: {exc}", 1) from exc
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AuditError(
+                        f"audit lock timed out after {wait_seconds:g}s: {CREATE_LOCK}", 1
+                    ) from exc
+                time.sleep(min(0.1, remaining))
         _LOCK_DEPTH += 1
         try:
             yield
         finally:
             _LOCK_DEPTH -= 1
     finally:
-        if locked:
-            if os.name == "nt":
-                import msvcrt
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-
+        try:
+            if locked:
+                if os.name == "nt":
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 def _write_documents(updates: dict[Path, str]) -> None:
     """Stage complete files, then replace them; roll back earlier replacements on I/O failure."""
@@ -1759,7 +1777,13 @@ def cmd_next(args: argparse.Namespace) -> None:
                 raise AuditError(f"ticket {r['id']} has invalid or missing Decision; run triage set", 1)
             if r.get("decision") != "FIX":
                 continue
-        _validate_transition_requirements(status, Path(r["path"]), Path(r["verification_path"]).read_text(encoding="utf-8"))
+        try:
+            _validate_transition_requirements(status, Path(r["path"]), Path(r["verification_path"]).read_text(encoding="utf-8"))
+        except AuditError as exc:
+            raise AuditError(
+                f"ticket {r['id']} ({Path(r['path']).name}): {exc.message}; run doctor",
+                exc.code,
+            ) from exc
         blocked = _is_blocked(r, status_by_id)
         if blocked and args.for_role == "resolution":
             blocked_skipped += 1
