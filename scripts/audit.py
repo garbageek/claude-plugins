@@ -1876,6 +1876,15 @@ def cmd_baseline(args: argparse.Namespace) -> None:
     baselines_dir = ROOT / "audit" / "baselines"
     baselines_dir.mkdir(parents=True, exist_ok=True)
 
+    # One field set drives both persisted snapshots and semantic comparison.
+    # It includes every ticket field used by triage and resolution scheduling.
+    semantic_defaults = {
+        "category": "?", "severity": "?", "title": "", "module": "",
+        "depends_on": [], "blocks": [],
+        "impact": "", "effort": "", "priority": "", "p_level": "",
+        "decision": "", "phase": "", "fix_group": "",
+    }
+
     def snapshot() -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
         for r in load_records():
@@ -1883,14 +1892,7 @@ def cmd_baseline(args: argparse.Namespace) -> None:
                 continue
             out[r["id"]] = {
                 "status": r.get("status", "UNVERIFIED"),
-                "category": r.get("category", "?"),
-                "severity": r.get("severity", "?"),
-                "title": r.get("title", ""),
-                "module": r.get("module", ""),
-                "depends_on": r.get("depends_on", []),
-                "blocks": r.get("blocks", []),
-                "priority": r.get("priority", ""),
-                "p_level": r.get("p_level", ""),
+                **{field: r.get(field, default) for field, default in semantic_defaults.items()},
                 "ticket_hash": r.get("ticket_hash", ""),
                 "verification_hash": r.get("verification_hash", ""),
             }
@@ -1929,7 +1931,7 @@ def cmd_baseline(args: argparse.Namespace) -> None:
             changed_status.append({"id": tid, "from": o.get("status"), "to": n.get("status")})
         if o.get("ticket_hash") != n.get("ticket_hash") or o.get("verification_hash") != n.get("verification_hash"):
             changed_content.append(tid)
-        for key in ("severity", "category", "module", "priority", "p_level", "depends_on", "blocks"):
+        for key in semantic_defaults:
             if o.get(key) != n.get(key):
                 changed_semantic.append({"id": tid, "field": key, "from": o.get(key), "to": n.get(key)})
     print(f"Baseline: {baseline_path.name} ({baseline.get('created_at', 'unknown')})\n")
