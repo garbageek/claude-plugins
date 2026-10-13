@@ -1,6 +1,6 @@
 {
   "name": "artur-plugins",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Kulik",
@@ -18,19 +18,22 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Artur Plugins",
-    "shortDescription": "Practical engineering workflows for agents",
-    "longDescription": "One shared skills library for architecture, audits, codebase documentation, repository guidance, prompts, prose, human runbooks, server operations, handover, and plugin authoring and installation management. Audit lifecycle work uses the bundled Python CLI only when requested; the optional MCP server is not registered automatically. No hooks, services, or server processes are started by plugin installation.",
+    "shortDescription": "Engineering skills for agents",
+    "longDescription": "Engineering workflows for code review, architecture, implementation planning, audit tickets, project recovery, codebase documentation, repository guidance, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
     "developerName": "Artur Kulik",
     "category": "Developer Tools",
     "capabilities": [
-      "Read",
-      "Write",
-      "Interactive"
+      "Review code and regressions",
+      "Plan architecture and code changes",
+      "Manage evidence-backed audit tickets",
+      "Recover broken implementations",
+      "Document codebases and repositories",
+      "Create and maintain agent plugins"
     ],
     "defaultPrompt": [
-      "Review this repository without changing files.",
-      "Design an implementation-ready architecture for this task.",
-      "Create, inspect, update, or install a plugin for Claude Code and Codex."
+      "Review this repository for confirmed defects and regressions without editing files.",
+      "Create an implementation-ready architecture and change plan for this codebase.",
+      "Inspect this Claude Code or Codex plugin for packaging and compatibility issues."
     ],
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png"

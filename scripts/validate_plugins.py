@@ -58,9 +58,32 @@ def validate_manifests():
     require("hooks" not in claude, "Do not auto-register Claude hooks")
     interface = codex.get("interface", {})
     require(interface.get("category") == "Developer Tools", "Missing/incorrect Codex category")
+    # The public directory applies stricter listing limits than ZIP upload.
+    for key, max_length, multiline in (
+        ("displayName", 30, False),
+        ("shortDescription", 30, False),
+        ("longDescription", 4000, True),
+        ("developerName", 80, False),
+    ):
+        value = interface.get(key)
+        require(isinstance(value, str) and value.strip() and len(value) <= max_length,
+                f"Invalid public listing {key} (max {max_length} characters)")
+        require("\r" not in value and (multiline or "\n" not in value),
+                f"Public listing {key} must be single-line or LF-only text")
+    capabilities = interface.get("capabilities")
+    require(isinstance(capabilities, list) and len(capabilities) <= 20,
+            "Public listing capabilities must be a list of at most 20 labels")
+    require(all(isinstance(c, str) and c.strip() and len(c) <= 120 and "\n" not in c
+                and "\r" not in c for c in capabilities),
+            "Invalid public listing capability label")
     prompts = interface.get("defaultPrompt", [])
     require(isinstance(prompts, list) and 1 <= len(prompts) <= 3, "Use one to three Codex default prompts")
     require(all(isinstance(p, str) and 0 < len(p) <= 128 for p in prompts), "Invalid Codex default prompt")
+    normalized_prompts = [" ".join(p.split()) for p in prompts]
+    require(all(p and "\n" not in p and "\r" not in p for p in prompts),
+            "Codex default prompts must be nonempty and single-line")
+    require(len(set(normalized_prompts)) == len(prompts),
+            "Codex default prompts must be unique after whitespace normalization")
     for key in ("logo", "composerIcon"):
         if key in interface:
             require(local_path(interface[key]).is_file(), f"Missing {key}")
