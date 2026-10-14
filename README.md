@@ -17,16 +17,16 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 
 | Workflow | Skills | Requirements |
 |---|---|---|
-| Audit and review | `deep-review`, `feature-scattering`, `audit-init`, `audit-status`, `audit-next`, `audit-discovery`, `audit-triage`, `audit-resolution`, `audit-verification` | Python for requested audit lifecycle and scanning; optional MCP setup; Git history optional |
-| Architecture and recovery | `architect`, `recover` | Source/requirements for the requested scope |
-| Prompts | `design-prompts` | Model/tool contract when target-specific |
-| Human procedures | `human-execution-runbook` | Actual operational inputs and execution evidence |
-| Codebase documentation | `code-to-prd`, `local-wiki` | Python; optional HTML renderer dependencies |
-| Repository instructions | `init-repo-instructions`, `review-repo-instructions`, `copilot-review-customizer` | Actual repository and current host/GitHub documentation |
-| Prose editing | `humanizer` | Supplied text and requested writing style |
-| Codex on Ubuntu | `codex-ubuntu-server` | Access to the selected Ubuntu host |
-| Session continuity | `uncompromising-handover` | An accessible checkpoint destination |
-| Plugin authoring | `create-plugin`, `inspect-plugin`, `update-plugin` | Local files; connected Plugin Creator only for hosted operations |
+| Audit and review | [`deep-review`](skills/deep-review/SKILL.md), [`feature-scattering`](skills/feature-scattering/SKILL.md), [`audit-init`](skills/audit-init/SKILL.md), [`audit-status`](skills/audit-status/SKILL.md), [`audit-next`](skills/audit-next/SKILL.md), [`audit-discovery`](skills/audit-discovery/SKILL.md), [`audit-triage`](skills/audit-triage/SKILL.md), [`audit-resolution`](skills/audit-resolution/SKILL.md), [`audit-verification`](skills/audit-verification/SKILL.md) | Python for requested audit lifecycle and scanning; optional MCP setup; Git history optional |
+| Architecture and recovery | [`architect`](skills/architect/SKILL.md), [`recover`](skills/recover/SKILL.md) | Source/requirements for the requested scope |
+| Prompts | [`design-prompts`](skills/design-prompts/SKILL.md) | Model/tool contract when target-specific |
+| Human procedures | [`human-execution-runbook`](skills/human-execution-runbook/SKILL.md) | Actual operational inputs and execution evidence |
+| Codebase documentation | [`code-to-prd`](skills/code-to-prd/SKILL.md), [`local-wiki`](skills/local-wiki/SKILL.md) | Python; optional HTML renderer dependencies |
+| Repository instructions | [`init-repo-instructions`](skills/init-repo-instructions/SKILL.md), [`review-repo-instructions`](skills/review-repo-instructions/SKILL.md), [`copilot-review-customizer`](skills/copilot-review-customizer/SKILL.md) | Actual repository and current host/GitHub documentation |
+| Prose editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied text and requested writing style |
+| Codex on Ubuntu | [`codex-ubuntu-server`](skills/codex-ubuntu-server/SKILL.md) | Access to the selected Ubuntu host |
+| Session continuity | [`uncompromising-handover`](skills/uncompromising-handover/SKILL.md) | An accessible checkpoint destination |
+| Plugin authoring | [`create-plugin`](skills/create-plugin/SKILL.md), [`inspect-plugin`](skills/inspect-plugin/SKILL.md), [`update-plugin`](skills/update-plugin/SKILL.md) | Local files; connected Plugin Creator only for hosted operations |
 | Plugin installation and management | [`install-agent-plugins`](skills/install-agent-plugins/SKILL.md) | Access to the selected host plugin manager/CLI; no Plugin Creator backend required |
 
 Python 3.10+ is required for the bundled runtime and helpers. Other skills do not
