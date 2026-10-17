@@ -75,7 +75,7 @@ Sections:
 - user-facing flows when needed;
 - traceability from goal to requirement.
 
-Do not create a full PRD by default. Use PRD-lite when requested or when it prevents material ambiguity; it is not a prerequisite to SPEC or implementation.
+Do not create a full PRD by default. Use PRD-lite only when explicitly requested; it is not a prerequisite to SPEC or implementation. Resolve ambiguity within the requested output or ask a consequential question instead of creating an unrequested PRD-lite.
 
 For committed functional requirements, include observable acceptance criteria linked to the requirement IDs. Keep the output product-level; do not invent an implementation architecture.
 
