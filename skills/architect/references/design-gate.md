@@ -1,6 +1,6 @@
 # Design Gate
 
-Use only after SKILL.md selects design discussion, an architecture decision, or ADR work. This reference refines that discussion; it does not route SPEC requests or impose a gate on already authorized implementation.
+Use only after SKILL.md selects design discussion, product discovery, an architecture decision, or ADR work. This reference refines that discussion; it does not route SPEC requests or impose a gate on already authorized implementation.
 
 ## Outcome
 
@@ -19,6 +19,65 @@ A Design Brief captures problem, capabilities, constraints, non-goals, and succe
 | Explicit adversarial review | Challenge assumptions and failure paths with evidence; distinguish risk from confirmed defect |
 
 Do not manufacture weak alternatives just to fill a table. Decompose large work into coherent slices while retaining the user's full objective, dependencies, and eventual deliverable.
+
+## Brainstorm session
+
+Use when the user is still exploring.
+
+- Start by crystallizing the problem.
+- Diverge before converging.
+- Generate multiple directions before judging them.
+- Track emerging decisions and unresolved questions.
+
+Useful techniques, selected only when they fit:
+
+| Technique | Best for |
+|---|---|
+| **5 Whys** | root cause and problem clarity |
+| **Starbursting** | discovering missing questions |
+| **SCAMPER** | feature/solution variations |
+| **Reverse brainstorming** | failure modes and risk discovery |
+| **Mind map** | organizing many ideas |
+| **SWOT** | strategic positioning |
+| **Six perspectives** | evaluating the same idea from multiple angles |
+| **Brainwriting** | producing idea volume before evaluation |
+
+Do not name-drop techniques unless they help the user understand the process.
+
+## Product discovery
+
+A Product Brief is the product-facing variant of the existing Design Brief, not a new mandatory phase.
+
+### Product Brief
+
+Use when the work starts from product discovery rather than an engineering change.
+
+Sections:
+
+- problem statement;
+- target users;
+- proposed solution;
+- goals and constraints;
+- success signals;
+- risks and assumptions;
+- dependencies and next steps.
+
+### PRD-lite
+
+Use only when the user needs product-level requirements and prioritization.
+
+Sections:
+
+- goals;
+- functional requirements with stable IDs;
+- non-functional constraints only where relevant;
+- priority using Must / Should / Could / Won’t;
+- user-facing flows when needed;
+- traceability from goal to requirement.
+
+Do not create a full PRD by default. Use PRD-lite only when explicitly requested; it is not a prerequisite to SPEC or implementation. Resolve ambiguity within the requested output or ask a consequential question instead of creating an unrequested PRD-lite.
+
+For committed functional requirements, include observable acceptance criteria linked to the requirement IDs. Keep the output product-level; do not invent an implementation architecture.
 
 ## Inspect before asking
 

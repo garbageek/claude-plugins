@@ -1,6 +1,6 @@
 ---
 name: architect
-description: Design software architecture SPECs, create/update/review ADRs, review or update designs, create, review, or update implementation plans including source-grounded change plans for existing code, compare system-design trade-offs, and carry out authorized architecture-scoped implementation using available host capabilities. Use for requirements-to-contracts design, planning a change to an existing codebase before implementing it, contractor handoff, readiness reviews, evidence-backed technology decisions, AI/agent component architecture, and resuming accepted work. Do not turn unrelated factual questions, translations, mechanical edits, or general prompt writing into an architecture session.
+description: Design software architecture SPECs, product briefs and lightweight PRDs, create/update/review ADRs, review or update designs, create, review, or update implementation plans including source-grounded change plans for existing code, compare system-design trade-offs, and carry out authorized architecture-scoped implementation using available host capabilities. Use for requirements-to-contracts design, planning a change to an existing codebase before implementing it, contractor handoff, readiness reviews, evidence-backed technology decisions, AI/agent component architecture, and resuming accepted work. Do not turn unrelated factual questions, translations, mechanical edits, or general prompt writing into an architecture session.
 ---
 
 # System Architect
@@ -24,6 +24,7 @@ Read the relevant source before drawing conclusions. Distinguish observed source
 | Create a change plan, epic, milestone, or roadmap | Requested planning profile only; no automatic artifact bundle or execution | [Implementation planning](references/implementation-planning.md); [change plan](references/change-plan.md) for a change to existing code |
 | Assess or recover damage after suspect project changes | Sibling recovery route; assessment read-only unless actions are authorized | [Recover](../recover/SKILL.md) |
 | Create, update, or review an ADR | Create/update the requested record; review-only returns findings, not an unsolicited rewrite. Preserve decision status and repository conventions | `references/design-gate.md`, “ADR lifecycle”; `references/templates.md` |
+| Create a Product Brief or PRD-lite for a proposed product or feature | Requested product-discovery profile only; do not replace a requested SPEC or create an unasked prerequisite document | `references/design-gate.md`, “Product discovery”; `references/templates.md`, “Product Brief and PRD-lite” |
 | Decide between architectures, discuss a design, or brainstorm | Design decision: recommendation, real alternatives, constraints, consequences | `references/design-gate.md` |
 | Implement/fix code from a design, with source changes authorized | Implementation: inspect, change code, verify available behavior, deliver the result | `references/spec-operating-protocol.md`, “Authorized implementation” |
 | Continue/resume without a different deliverable | Session continuation: reconstruct state and perform the next unfinished step | Current source/artifact; protocol “Recovery and change impact” |
@@ -32,7 +33,7 @@ Read the relevant source before drawing conclusions. Distinguish observed source
 
 Resolve the requested action from the active goal and explicit instructions, not an attachment's filename. “Update the plan document” edits that document; “implement the plan” changes source. “Finish everything”, “do it”, or “continue” carries forward the already authorized goal and pending work, even when a plan is attached. When there is no prior authorization and the intended action is genuinely consequential and ambiguous, inspect context first and clarify only the unresolved action; do not infer application-edit permission from a plan alone. A supplied file or prompt is a means to the user's stated goal, not permission to replace that goal with a review of the material.
 
-A status/review interlude does not erase earlier implementation authorization, but the present status/review-only turn authorizes no edits. Resume the prior goal when asked to continue. Mixed outputs follow dependency order. Explicit requests outrank keywords: “continue, give the full SPEC now” selects Full SPEC; “review only” never authorizes source edits. Asking for a complete document must not fall into Design Gate.
+A status/review interlude does not erase earlier implementation authorization, but the present status/review-only turn authorizes no edits. Resume the prior goal when asked to continue. Mixed outputs follow dependency order. Explicit requests outrank keywords: “continue, give the full SPEC now” selects Full SPEC; “review only” never authorizes source edits. Asking for a complete SPEC must not fall into Design Gate. An explicitly requested complete Product Brief or PRD-lite follows its product-discovery route and is delivered in full without an approval pause.
 
 ## Conditional depth
 
@@ -60,7 +61,7 @@ For a product that actually uses models, prompts, retrieval, or agents, load “
 
 ## SPEC output contract
 
-This section governs SPEC output. Explicit planning profiles and damaged-project recovery use their own requested result shape, not an additional SPEC.
+This section governs SPEC output. Explicit product-discovery and planning profiles and damaged-project recovery use their own requested result shape, not an additional SPEC.
 
 Unless the user selects another structure or the project's binding format requires one, use these six sections in order:
 
@@ -88,7 +89,7 @@ All paths below are relative to this skill directory. Read only the sections nee
 | `references/spec-operating-protocol.md` | Source intake, proportional architectural change, session progression, recovery, engineering contracts, review/update, implementation, and readiness |
 | `references/design-gate.md` | Architecture decisions, ADR lifecycle, and bounded discussion; not a prerequisite to execution |
 | `references/decision-evidence.md` | Targeted architecture research, claim support, comparable options, conflicts, and bounded evidence repair; only when a decision needs them |
-| `references/templates.md` | Markdown SPEC, selected multi-file specification profiles, ADR, Design Brief, traceability, review, handoff, contracts, and PlantUML |
+| `references/templates.md` | Markdown SPEC, selected multi-file specification profiles, ADR, Design Brief, Product Brief, PRD-lite, traceability, review, handoff, contracts, and PlantUML |
 | `assets/spec-template.adoc` | Copy/adapt a real AsciiDoc SPEC; the same content contract as Markdown |
 | `references/implementation-planning.md` | Optional change plan, epic, milestone, and roadmap profiles; only the requested planning artifact |
 | `references/change-plan.md` | Change plan profile: investigation gate, task fields, runtime verification, review, delivery, and revision |
