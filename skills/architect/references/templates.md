@@ -11,6 +11,7 @@ This file owns reusable output shapes. SKILL.md owns routing and the six-section
 - [Architecture decision](#architecture-decision)
 - [Decision comparison and evidence](#decision-comparison-and-evidence)
 - [Design Brief](#design-brief)
+- [Product Brief and PRD-lite](#product-brief-and-prd-lite)
 - [Detailed contracts](#detailed-contracts)
 - [Similar-system comparison](#similar-system-comparison)
 - [Optional extended section templates](#optional-extended-section-templates)
@@ -188,6 +189,58 @@ Use for product framing during design discussion. This is a compact brief, not t
 ```
 
 For a technical decision, add the recommended approach, real alternatives, consequences, and outstanding question inline when needed. Do not generate extra artifact types just to preserve a short discussion.
+
+## Product Brief and PRD-lite
+
+Use these optional product-discovery shapes only when requested. They do not replace the canonical architecture SPEC or the code-to-PRD workflow for existing implementations. Preserve the project's current document format when updating an artifact.
+
+### Product Brief
+
+```markdown
+# Product Brief — <name>
+
+## Problem Statement
+
+## Target Users
+
+## Proposed Solution
+
+## Goals and Constraints
+
+## Success Signals
+
+## Risks and Assumptions
+
+## Dependencies and Next Steps
+```
+
+### PRD-lite
+
+```markdown
+# PRD-lite — <name>
+
+## Goals
+
+## Requirements
+- FR-001: MUST — <capability>
+
+## Priorities
+- Must:
+- Should:
+- Could:
+- Won’t:
+
+## User Flow
+
+## Constraints
+
+## Acceptance Criteria
+- AC-001 (FR-001): <observable outcome>
+
+## Traceability
+
+## Open Questions
+```
 
 ## Detailed contracts
 
