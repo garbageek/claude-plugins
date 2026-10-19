@@ -72,6 +72,7 @@ without making experiments, parallel agents or new reports compulsory.
 State the covered skill count, whether inventory and necessary references were
 complete, and which evidence is unavailable. A source-level assessment is not an
 observed measure of runtime efficacy or installed-host discovery. Remain read-only.
+
 ## Release history
 
 Only query historical releases when the user asks about previous versions, release

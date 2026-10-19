@@ -164,14 +164,29 @@ cross-platform. Hooks are not a universal filesystem boundary.
 
 ## Skill instruction quality
 
-Apply this rubric when creating a skill or materially changing its instructions; a metadata-only change needs only the applicable package checks.
+Apply this rubric when creating a skill or materially changing its instructions.
+A metadata-only edit needs only the applicable package checks.
 
-- **Discovery:** In frontmatter, describe *when* the skill is relevant, using recognizable situations and boundaries. Do not substitute a condensed procedure for an activation trigger. Keep the existing host-specific name and metadata rules.
-- **Ownership:** Give each rule one authoritative owner. Refer to shared contracts instead of copying them into sibling skills; ensure that overlapping triggers route distinct user goals without contradictory permissions.
-- **Instruction shape:** For a hard constraint, state the observable condition and prohibited effect precisely. For output quality, describe the required result and its evidence rather than accumulating prohibitions and exceptions.
-- **Conditional depth:** Load detailed references only for the work they govern. Prefer a small useful example over repeated boilerplate, pressure scripts, or generic anti-rationalization tables.
-- **Capabilities:** Bind tools, host behavior, permissions and failure handling to what the target actually exposes. A skill description cannot provision a missing tool or grant authority to change files or remote state.
-- **Evidence:** Inspect the resulting source and package wiring. Claim improved agent behavior only from actual host execution; structural validity, instruction inspection and behavioral evaluation remain separate. Do not create an evaluation suite, subagent harness or mandatory TDD cycle unless requested.
+- **Discovery:** Frontmatter describes *when* the skill applies, with recognizable
+  situations and boundaries, not a condensed workflow. Preserve the host's
+  existing name and metadata requirements.
+- **Ownership:** Give each rule one authoritative owner. Refer to shared
+  contracts instead of copying them into sibling skills; route overlapping
+  triggers to distinct goals without contradictory permissions.
+- **Instruction shape:** State a hard constraint as an observable condition
+  and boundary. For output quality, positively describe the required result
+  and evidence instead of stacking prohibitions and exceptions.
+- **Conditional depth:** Load detailed references only when applicable.
+  Prefer one useful example to repeated boilerplate, pressure scripts,
+  or generic anti-rationalization tables.
+- **Capabilities:** Bind tools, host behavior, permissions and failures to
+  the target's real capabilities. A skill cannot provision an unavailable
+  tool or authorize unrequested remote or filesystem changes.
+- **Evidence:** Inspect the resulting source and package wiring. Claim
+  improved agent behavior only after actual host execution: instruction
+  review and structural validity are not behavioral evaluation. No
+  evaluation suite, subagent harness or TDD cycle is required by default.
+
 ## Repository and archive delivery
 
 Read the selected repository's manifests, conventions, instruction scope and

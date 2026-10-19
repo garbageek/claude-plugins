@@ -129,7 +129,8 @@ not a guessed path read, establishes that the requested deletion was applied.
 Read changed and affected retained files by their returned paths. Check exact content,
 manifest identity/version agreement, necessary preserved integrations/assets, and
 expected skill discovery. For material instruction edits, recheck the saved trigger,
-authority, output contract and affected neighboring routes against the prior source. If readback is unavailable or a newer release already
+authority, output contract and affected neighboring routes against the prior source.
+If readback is unavailable or a newer release already
 exists, report the saved update separately from unchecked results; do not publish
 again automatically. Local/archive delivery uses the final file inventory/readback,
 not invented backend IDs or release results.
