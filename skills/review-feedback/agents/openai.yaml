@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review Feedback"
+  short_description: "Assess and address review comments using source evidence"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

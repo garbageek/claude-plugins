@@ -198,6 +198,13 @@ Omit any heading or field that adds no decision. The template is illustrative: e
 - Reconcile overlapping plans into one consistent design. Resolve conflicts and remove superseded instructions rather than concatenating histories or keeping multiple competing sources of truth.
 - On a new session or after context loss, reread the canonical plan and the current implementation instead of reconstructing decisions from conversation memory. The plan is the durable handoff; do not invent manifests, memory banks, decision logs, progress reports, or extra files by default.
 - If implementation reveals a materially better solution or a new material constraint, **update the affected technical instructions and contracts within the plan** to reflect the revised decision, its reason, and related tasks, then proceed when authorized. Preserve the detail that made the original plan executable; do not leave it contradicting actual implementation. Routine engineering discretion remains with the implementer, and justified improvements do not require repetitive user approval.
+- For a **material** deviation, record next to the affected task the prior planned
+  behavior/constraint, new source evidence, selected change and rationale, affected
+  interfaces/consumers and dependent tasks, and revised acceptance or verification
+  expectations. Reconcile the saved plan against current source on resumption.
+  This amends the canonical plan; it is **not** a new ledger or approval gate.
+  If no plan exists, use the existing task/handoff record or state the deviation
+  directly. Do not manufacture a plan for a local fix.
 - At a **planning-only handoff**, deliver the full plan and stop before modifying application code. At an **implementation handoff**, carry out the authorized work; the plan is an aid to implementation, not a substitute for it.
 
 **Final standard:** every requirement maps to **explicit, source-grounded before → after edits**; relevant existing paths, states, and consumers were examined before planning finished; every significant design decision is supported and resolved or precisely blocked; dependent changes are sequenced coherently; and each promised behavior has a practical observable proof. The plan is **detailed enough to prevent foreseeable implementation surprises** while leaving room for justified improvements.

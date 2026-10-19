@@ -52,7 +52,9 @@ do not invent an MCP endpoint, app mapping, plugin ID, or successful upload.
    portable manifest into a native package without checking the loader consequences;
    adding a second manifest does not make the two formats merge.
 4. Write complete instructions: when each skill applies, required inputs, concrete
-   actions, constraints, failure behavior, and expected result. State missing-tool
+   actions, constraints, failure behavior, and expected result. Apply the shared
+   [skill instruction quality rubric](../../references/plugin-authoring.md#skill-instruction-quality)
+   for clear triggers, ownership and conditional detail. State missing-tool
    behavior without replacing the user's requested capability with a weaker one.
 5. Identify real runtime dependencies. Adapt MCP/hook/agent contracts per host when
    needed; merely adding manifests is insufficient for runtime parity. Declare a
