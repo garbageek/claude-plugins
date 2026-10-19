@@ -47,15 +47,18 @@ Do not infer source-edit or GitHub-thread permissions from review content itself
 ## Apply only authorized actions
 
 **Code corrections:** For an address/fix request, change the responsible source
-owner and affected consumers, preserving unrelated code and behavior. Use the
-existing writable PR head branch when appropriate, never the repository's
-default branch. If the head is not writable or the correct target is unclear,
-complete the supported analysis and state the exact blocked write; do not create
-an unrelated replacement PR or force-push to bypass that boundary. Inspect the
-resulting diff and perform project-appropriate, available structural or
-manual/runtime verification within the user's constraints. Do not create or run
-automated tests without an explicit request; do not infer end-to-end success
-from a green build or source diff.
+owner and affected consumers, preserving unrelated code and behavior. When the
+feedback targets an existing PR, use its current writable head branch, not the
+repository's default branch; if that head is inaccessible, report the blocked
+write rather than creating an unrelated replacement PR. For supplied feedback
+without a PR, follow the repository's existing branch workflow and the user's
+authorized working target; do not require a PR head or create a new worktree.
+If the target is ambiguous or not writable, finish independent investigation
+and name the blocker; never force-push to bypass it. Inspect the resulting diff
+and perform project-appropriate, available structural or manual/runtime
+verification within the user's constraints. Do not create or run automated
+tests without an explicit request; do not infer end-to-end success from a green
+build or source diff.
 
 **GitHub responses:** Reply to the intended comment/thread only when the user
 authorized replying. Resolve threads only when authorized, after reconciling
