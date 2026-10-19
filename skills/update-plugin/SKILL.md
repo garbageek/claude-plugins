@@ -60,6 +60,11 @@ a service in order to bypass the missing operation or an access denial.
 - Do not remove an existing compatibility file just because it is optional. Remove
   it only when the requested cleanup/conversion covers it and no required setting
   or consumer is lost. Backend omission alone never deletes it.
+- For material instruction changes, apply the shared
+  [skill instruction quality rubric](../../references/plugin-authoring.md#skill-instruction-quality):
+  compare existing versus proposed triggers, authority, output and failure behavior;
+  examine relevant sibling-skill ownership and cross-references for contradictions.
+  Pure packaging or metadata edits do not trigger this instruction review.
 
 ## Removal and rename
 
@@ -123,7 +128,8 @@ not a guessed path read, establishes that the requested deletion was applied.
 
 Read changed and affected retained files by their returned paths. Check exact content,
 manifest identity/version agreement, necessary preserved integrations/assets, and
-expected skill discovery. If readback is unavailable or a newer release already
+expected skill discovery. For material instruction edits, recheck the saved trigger,
+authority, output contract and affected neighboring routes against the prior source. If readback is unavailable or a newer release already
 exists, report the saved update separately from unchecked results; do not publish
 again automatically. Local/archive delivery uses the final file inventory/readback,
 not invented backend IDs or release results.

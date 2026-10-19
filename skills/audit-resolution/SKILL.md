@@ -24,6 +24,15 @@ implement the ticket's required consumer-side behavior (such as normalization or
 rejection) and identify it as a mitigation, not a producer fix. Preserve controls
 independently required by the accepted ticket or product contract.
 
+For a `BUG` ticket, investigate `reported symptom → reachable failing path →
+violated contract/invariant → responsible owner → minimal correct fix` before
+changing code. Inspect relevant callers, affected consumers and evidence that
+might disprove the suspected cause. A source-provable defect need not be
+reproduced in an unavailable runtime; state what was inspected and what could
+not be observed. Name a scoped workaround as a mitigation, not a verified
+root-cause repair. Preserve the ticket's original acceptance criteria and
+record only evidence actually obtained, following the shared proof guide below.
+Do not introduce tests, diagnostic infrastructure or extra scope implicitly.
 
 Use the shared [resolution proof guide](../../docs/audit/references/resolution-proof.md) to separate proposed checks, observed results, and verdicts, including whether corrected source is active in the relevant running instance. Keep the existing acceptance gates and user-authorized validation scope; do not generate tests or restart services implicitly.
 

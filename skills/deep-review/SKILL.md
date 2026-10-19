@@ -13,6 +13,12 @@ Read the requested source, diff, relevant project instructions, and stated accep
 
 Default to read-only inspection and return findings directly. Do not initialize `audit/`, create reports or tickets, edit code, restart services, create commits, or run/write/repair tests without authorization. In particular, **do not invoke the `audit-discovery` agent for a read-only review**: that agent initializes audit state. A request to review a fix does not authorize another fix.
 
+For specific PR review comments, read-only assessment can use this evidence standard.
+If the user asks to **address or fix** those comments, use
+[review-feedback](../review-feedback/SKILL.md) for the authorized implementation
+route; do not turn this read-only reviewer into a code writer or add an extra
+approval requirement for work the user already authorized.
+
 Audit against the product's actual purpose; do not redefine it to make an unfamiliar mechanism look unnecessary. Trace that mechanism and its consumers before recommending removal. Internal complexity or the reviewer's uncertainty is not a defect or a product blocker. State missing evidence, continue independent inspection, and distinguish those limits from a concrete prerequisite that actually blocks an authorized operation.
 
 ## Review procedure

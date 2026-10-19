@@ -1,6 +1,6 @@
 ---
 name: inspect-plugin
-description: Use for read-only inspection of a Claude Code or Codex plugin from source, an archive, or an accessible Plugin Creator release, including structure, compatibility, integrations, release history, and change assessment.
+description: Use for read-only inspection or per-skill quality assessment of a Claude Code or Codex plugin from source, an archive, or an accessible Plugin Creator release, including structure, workflow boundaries, compatibility, integrations, and release history.
 ---
 
 # Inspect plugin
@@ -54,6 +54,24 @@ as proof the plugin does not exist or that edit access was denied.
    execution evidence, and unavailable checks. Do not invent a defect from a generic
    pattern or claim live loading from a valid archive.
 
+## Skill quality assessment
+
+When asked to assess **each skill** (rather than merely inspect packaging), enumerate
+every actual `skills/*/SKILL.md` entry point from the complete source inventory.
+Read each entire SKILL.md and the specific supporting references necessary to
+understand its operating contract; do not grade it from names or frontmatter alone.
+
+For each skill, state its purpose and activation boundary, distinct value, overlap
+with neighboring skills, source-backed strengths and concrete defects, assumptions
+about tools/hosts/permissions, smallest justified improvement, and a
+**KEEP / CHANGE / REMOVE** recommendation. Explicitly include unchanged skills;
+do not manufacture a defect to populate the assessment. Reuse the shared
+[skill instruction quality rubric](../../references/plugin-authoring.md#skill-instruction-quality)
+without making experiments, parallel agents or new reports compulsory.
+
+State the covered skill count, whether inventory and necessary references were
+complete, and which evidence is unavailable. A source-level assessment is not an
+observed measure of runtime efficacy or installed-host discovery. Remain read-only.
 ## Release history
 
 Only query historical releases when the user asks about previous versions, release
