@@ -1,6 +1,6 @@
 {
   "name": "artur-plugins",
-  "version": "1.1.10",
+  "version": "1.2.0",
   "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Kulik",
@@ -19,13 +19,15 @@
   "interface": {
     "displayName": "Artur Plugins",
     "shortDescription": "Engineering skills for agents",
-    "longDescription": "Engineering workflows for code review, architecture, implementation planning, audit tickets, project recovery, codebase documentation, repository guidance, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
+    "longDescription": "Engineering workflows for code review, debugging, agent-session diagnosis, architecture, implementation planning, audit tickets, project recovery, codebase documentation, repository guidance, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
     "developerName": "Artur Kulik",
     "category": "Developer Tools",
     "capabilities": [
       "Review code and regressions",
       "Plan architecture and code changes",
       "Manage evidence-backed audit tickets",
+      "Debug failures to their root cause",
+      "Diagnose agent session transcripts",
       "Recover broken implementations",
       "Document codebases and repositories",
       "Create and maintain agent plugins"
