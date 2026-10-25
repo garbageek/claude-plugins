@@ -19,6 +19,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 |---|---|---|
 | Audit and review | [`deep-review`](skills/deep-review/SKILL.md), [`review-feedback`](skills/review-feedback/SKILL.md), [`feature-scattering`](skills/feature-scattering/SKILL.md), [`audit-init`](skills/audit-init/SKILL.md), [`audit-status`](skills/audit-status/SKILL.md), [`audit-next`](skills/audit-next/SKILL.md), [`audit-discovery`](skills/audit-discovery/SKILL.md), [`audit-triage`](skills/audit-triage/SKILL.md), [`audit-resolution`](skills/audit-resolution/SKILL.md), [`audit-verification`](skills/audit-verification/SKILL.md) | Python for requested audit lifecycle and scanning; optional MCP setup; Git history optional |
 | Architecture and recovery | [`architect`](skills/architect/SKILL.md), [`recover`](skills/recover/SKILL.md) | Source/requirements for the requested scope |
+| Debugging and session diagnosis | [`debug`](skills/debug/SKILL.md), [`diagnose-session`](skills/diagnose-session/SKILL.md) | Access to the failing project or command; local agent-session transcripts for diagnosis |
 | Prompts | [`design-prompts`](skills/design-prompts/SKILL.md) | Model/tool contract when target-specific |
 | Human procedures | [`human-execution-runbook`](skills/human-execution-runbook/SKILL.md) | Actual operational inputs and execution evidence |
 | Codebase documentation | [`code-to-prd`](skills/code-to-prd/SKILL.md), [`local-wiki`](skills/local-wiki/SKILL.md) | Python; optional HTML renderer dependencies |
@@ -219,6 +220,16 @@ The architect now includes optional change plan, epic, milestone, and roadmap ou
 ```
 
 Recovery assessment is read-only by default; recovery actions require explicit authorization.
+
+### Debugging and session diagnosis
+```text
+/artur-plugins:debug
+/artur-plugins:diagnose-session
+```
+
+`debug` investigates a failing command, crash, wrong output, or regression to its root cause before any fix. Diagnosis is the default and changes nothing; a fix request authorizes the root-cause fix within scope. Re-running the reported failing command is reproduction; broader suites, new tests, and Git state changes such as bisect need an explicit request. After three unsuccessful fixes for the same failure it stops and hands the design question back.
+
+`diagnose-session` reads Claude Code or Codex session transcripts on disk and reports what happened (skill triggering, plan adherence after compaction, repeated work, stumbles, unsupported completion claims, cost and time) with `path:line` evidence. Session stores stay read-only; working files go to a separate diagnosis workspace. Similar-session search, a scrubbed evidence bundle, and an issue draft are produced only on request, with approval before anything is archived or published. The report does not change skills or code; a requested change goes through `update-plugin` or `debug`.
 
 ### Prompt design
 ```text
@@ -754,6 +765,7 @@ claude-plugins/
 ├── agents/                  # Claude audit role agents
 ├── references/              # shared authoring/instruction contracts
 ├── docs/audit/              # canonical lifecycle contract and operator guide
+├── THIRD_PARTY_NOTICES.md   # licenses for adapted third-party material
 └── .github/workflows/       # package validation
 ```
 
@@ -779,6 +791,13 @@ checkout; generated project state belongs to the selected external workspace.
 
 - Adds optional implementation-planning profiles (change plan, epic, milestone, roadmap) and `/artur-plugins:recover` while keeping `/artur-plugins:architect` canonical.
 - No additional local runtime dependency.
+
+## Debugging and session diagnosis
+
+- `debug` is an instruction workflow; reproduction and fixes use the host's own shell and file tools on the selected project.
+- `diagnose-session` needs local read access to the session store: `~/.claude/projects/` for Claude Code (or `CLAUDE_CONFIG_DIR`), `$CODEX_HOME/sessions/` for Codex. Reading compressed Codex rollouts (`.jsonl.zst`) needs `zstd`; `jq` is used for bounded field extraction when available.
+- Transcript formats are host-internal and change between versions; the skill establishes record meanings from the observed files each time rather than relying on a fixed schema.
+- Parallel analysts are used only when the host provides subagents; otherwise the same dimensions run sequentially.
 
 ## Prompt design
 

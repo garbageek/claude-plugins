@@ -1,0 +1,5 @@
+interface:
+  display_name: "Diagnose Session"
+  short_description: "Explain what went wrong in an agent session"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

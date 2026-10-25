@@ -1,0 +1,5 @@
+interface:
+  display_name: "Debug"
+  short_description: "Trace failures to their root cause before fixing"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"
