@@ -24,6 +24,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Human procedures | [`human-execution-runbook`](skills/human-execution-runbook/SKILL.md) | Actual operational inputs and execution evidence |
 | Codebase documentation | [`code-to-prd`](skills/code-to-prd/SKILL.md), [`local-wiki`](skills/local-wiki/SKILL.md) | Python; optional HTML renderer dependencies |
 | Repository instructions | [`init-repo-instructions`](skills/init-repo-instructions/SKILL.md), [`review-repo-instructions`](skills/review-repo-instructions/SKILL.md), [`copilot-review-customizer`](skills/copilot-review-customizer/SKILL.md) | Actual repository and current host/GitHub documentation |
+| Mobile web UI | [`iphone13mini-ui`](skills/iphone13mini-ui/SKILL.md) | Python 3.10+ with Playwright; WebKit or Chromium browser binary; USB iPhone with pymobiledevice3 for real-device checks |
 | Prose editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied text and requested writing style |
 | Codex on Ubuntu | [`codex-ubuntu-server`](skills/codex-ubuntu-server/SKILL.md) | Access to the selected Ubuntu host |
 | Session continuity | [`uncompromising-handover`](skills/uncompromising-handover/SKILL.md) | An accessible checkpoint destination |
@@ -268,12 +269,19 @@ Supports drafting, updating from actual execution evidence, and resuming interru
 
 Installing the toolkit supplies the **customizer**, not a review skill already installed in another repository. The customizer may produce `.github/skills/code-review/SKILL.md` in the selected project, update another appropriate surface, or conclude no change is needed. It needs documentation access and repository/history evidence; it prefers a GitHub connector and requests archives, a checkout, or command output when that access is unavailable. No GitHub connection, credentials, settings changes, or automatic reviews are provisioned by this package. Preparing files and confirming documented loading do not prove Copilot used them or improved a real review.
 
+### Mobile web UI
+```text
+/artur-plugins:iphone13mini-ui
+```
+
+[iphone13mini-ui](skills/iphone13mini-ui/SKILL.md) develops, debugs and tests web interfaces for iPhone 13 mini Safari. Every result carries an evidence level: Chromium emulation (L0), Playwright WebKit on Linux (L1), or a real USB-connected iPhone through pymobiledevice3 (L2). Its helpers capture screenshots with viewport/safe-area/unit telemetry, run an advisory DOM audit (overflow, off-screen fixed elements, touch targets, input zoom, viewport meta, safe areas, `100vh`, hover, clipped text), align local renders with real-device screenshots, and include one real Safari calibration frame. Local engines do not reproduce Safari's toolbar, keyboard, fonts or real `env()` values; those findings stay open until captured on the device.
+
 ### Prose editing
 ```text
 /artur-plugins:humanizer
 ```
 
-[humanizer](skills/humanizer/SKILL.md) detects, rewrites, or edits formulaic prose when writing quality is requested. It handles technical documentation, PR descriptions, review comments, messages, and other prose while preserving meaning, certainty, code, identifiers, numbers, citations, and the sender's authority and commitments. Detect mode does not rewrite; already-clear text may remain unchanged. This is prose editing, not prompt design, an authorship detector, or an automatic filter on unrelated answers.
+[humanizer](skills/humanizer/SKILL.md) drafts, rewrites, and reviews work prose in the author's own voice, including status updates, proposals, technical documentation, PR descriptions, messages, and meeting notes. It preserves meaning, numbers, identifiers, limitations, the sender's authority, and commitments; it provides an advisory AI-pattern scanner and token-preservation check. The skill can activate for drafting in the user's name without an explicit request to humanize. Detect mode does not rewrite, and already-clear text may remain unchanged.
 
 ### Codex on Ubuntu
 
@@ -460,6 +468,10 @@ Architecture, prompt design, human runbooks, repository instructions, prose edit
 ### Codebase documentation
 
 The skills can load as plugin content, but its practical repository-analysis workflows use local Python helpers and local source files. Full helper-backed behavior therefore depends on a host that can access the repository and run Python 3.10+. Optional HTML wiki rendering has additional skill-local Python dependencies.
+
+### Mobile web UI
+
+The helpers need Python 3.10+, Playwright and a browser binary on the host. Sandboxes that block the Playwright browser download can still run the Chromium fallback (L0) against an existing Chrome/Chromium; real-device checks need a USB-connected iPhone and pymobiledevice3 on the same host.
 
 ### Audit and review
 
@@ -820,6 +832,12 @@ checkout; generated project state belongs to the selected external workspace.
 - `review-repo-instructions` is read-only by default.
 - Host instruction-loading behavior is version-sensitive; re-check current host behavior when it differs from this guide.
 - `copilot-review-customizer` targets GitHub Copilot Code Review customization, not generic instruction maintenance. It requires live documentation and repository evidence; connection availability and requested writes are separate concerns.
+
+## Mobile web UI
+
+- Skill-local Python helpers and dependencies (`skills/iphone13mini-ui/scripts/requirements.txt`); installing packages or browsers requires permission to change the selected environment.
+- Outputs go to a chosen project or temporary directory, never into the installed skill.
+- Linux WebKit and Chromium results are not Safari results; real-device capture depends on pairing, Web Inspector and, for native screenshots, Developer Mode with a mounted Developer Disk Image.
 
 ## Prose editing
 

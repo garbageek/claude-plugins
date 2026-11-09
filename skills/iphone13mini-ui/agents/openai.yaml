@@ -1,0 +1,5 @@
+interface:
+  display_name: "iPhone 13 mini UI"
+  short_description: "Build and verify web UI for iPhone 13 mini Safari"
+  icon_small: "./assets/icon.png"
+  icon_large: "./assets/icon.png"

@@ -1,8 +1,7 @@
 {
   "name": "artur-plugins",
   "owner": {
-    "name": "Artur Kulik",
-    "email": "arthur.kulik@icloud.com"
+    "name": "Artur Plugins contributors"
   },
   "plugins": [
     {

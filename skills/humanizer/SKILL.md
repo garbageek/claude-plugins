@@ -1,323 +1,363 @@
 ---
 name: humanizer
-description: Detect and revise formulaic or AI-sounding prose while preserving meaning, accuracy, formatting, domain conventions, and the author's voice. Use when asked to humanize, de-slop, naturalize, voice-match, or audit prose specifically for filler, hedging, boilerplate, generic phrasing, or formulaic structure. When asked whether text is AI-written, analyze stylistic patterns without giving an authorship verdict. Do not use for ordinary factual, legal, technical, or code review unless prose quality is explicitly part of the request.
+description: Drafts, rewrites, and checks text that goes out under the user's own name (reports, status updates, design docs, proposals, emails, Slack messages, meeting notes, talking points for a manager or leadership) so it reads as written by that person and carries no AI tells. Use whenever drafting or editing such text, even if the user never says "humanize", and when asked to humanize, de-slop, remove AI smell, make text sound less like ChatGPT/GPT/Claude, rewrite in their voice, or check whether text reads as AI-written (also "очеловечь", "убери AI-стиль", "звучит как нейросеть"). Includes an advisory pattern scanner and a token-preservation check (Python 3, no dependencies). English, Russian, Ukrainian. Not for code review or fact-checking unless prose quality is part of the request.
+metadata:
+  version: "3.1.2"
 ---
 
 # Humanizer
 
-Detect and revise formulaic prose. The goal is better writing, not camouflage.
+The user sends these documents to colleagues and management as his own work. Those
+readers have seen a lot of ChatGPT output and recognize it from a few lines. The job is
+text this author would plausibly write to this reader, with every fact, number, and
+position intact.
 
-## Hard limits
+## How this version works
 
-These limits apply regardless of how the request is phrased:
+The earlier versions missed the AI smell for three reasons, and the steps below exist to
+close them:
 
-- **No authorship verdicts.** Stylistic signals cannot establish who wrote a text. When asked whether text is AI-written, report the patterns present and state explicitly that authorship cannot be determined from prose alone.
-- **No detector optimization.** Never optimize for AI-detector scores. When asked to make text pass or evade a detector, explain that detector results are unreliable and not a valid editing target, then offer to improve the prose on its own merits.
+1. They treated em dashes, bold labels, lists of three, and "AI words" as neutral style
+   choices to be judged case by case. Readers detect AI text by exactly those surface
+   patterns, so the smell survived. This version names the patterns and removes them
+   by default (`references/patterns.md`).
+2. The model checked its own output by impression. Its default style is the smell, so it
+   cannot see it. This version runs a scanner (`scripts/ai_tells.py`) on every draft.
+3. Rewriting sentence by sentence keeps the AI skeleton: the section layout, the bold
+   lead-in bullets, the even rhythm, the closing summary. This version rebuilds from a
+   fact sheet when the structure, role, or genre is wrong.
 
-## Modes
+Drafting in the user's name, the role and genre checks, and the context cases come from
+v2 and are kept.
 
-When the user names a mode, use it. Otherwise infer the mode from the request:
+The scanner is a tool for the editor, not a judge. Meaning, role, and commitments
+outrank any pattern count (see "Severity").
 
-- Text supplied with `humanize`, `rewrite`, `fix`, `naturalize`, or `clean this up` → **Rewrite**
-- A file named with a request to revise its prose → **Edit**
-- `Audit`, `review the writing`, `what is wrong with this prose`, or `does this sound AI-written?` → **Detect**
-- Genuinely ambiguous → **Detect**, then offer a rewrite
+## Hard rules
 
-## Output proportionality
+These override every style rule below. A rewrite that changes meaning is worse than one
+that still smells.
 
-Keep user-facing output proportional to the source and the scope of the task.
-
-- For small or obvious changes, use a compact response.
-- Group related edits instead of documenting every local substitution.
-- Treat claim inventories, protected-span tracking, and verification steps as internal work unless the user requests them or a material risk must be explained.
-- Follow the user's requested output format and level of detail.
-- Treat requests such as `short`, `brief`, or `in one sentence` as hard output constraints. Keep only the recipient-facing request or conclusion. Do not add background, rationale, implementation details, or facts available through an included link unless they are necessary to understand the message.
-
-### Detect
-
-Analyze without rewriting. For each meaningful finding, provide:
-
-- a canonical name from `Finding names`;
-- an excerpt or location;
-- severity: `high`, `medium`, or `low`;
-- a concise explanation;
-- a recommended change.
-
-State whether a judgment is context-dependent only when that distinction affects the finding.
-
-For short text or one or two findings, use a compact list:
-
-```markdown
-## Findings
-
-- `Medium — Generic framing` — "excerpt": explanation. Recommended change: ...
-```
-
-For larger audits, group findings by severity:
-
-```markdown
-## Findings
-
-### High
-- `Canonical name` — "excerpt" (`location`): explanation. Recommended change: ...
-
-### Medium
-...
-
-### Low
-...
-
-## Assessment
-- Clear problems: ...
-- Context-dependent judgments: ...
-```
-
-Omit empty severity sections. Include `Assessment` only when it synthesizes several findings, distinguishes clear problems from context-dependent judgments, or adds information not already present in the findings.
-
-If no meaningful problem exists, say so. A manufactured finding undermines the audit, and `already clean` is a useful result.
-
-When asked whether text is AI-written, always state that stylistic patterns may justify editing but cannot establish authorship.
-
-### Rewrite
-
-Return a revised version that preserves the source's claims, intent, register, and protected content. Change only text that benefits from editing.
-
-Return the revised text first. Add a short summary only when the user requests one, several non-obvious changes require explanation, or a preservation constraint limits the result.
-
-If the text is intended to be sent as a message, email, comment, or post, return only the final copy-ready text. Do not add an introduction, explanation, assessment, apology, label, or quotation block unless the user explicitly asks for commentary.
-
-If the user asks for only the revised text, return only that text unless a warning is necessary to prevent invention or a substantive meaning change.
-
-If the requested effect would require unsupported invention or a substantive meaning change, deliver what is possible and state the limitation.
-
-### Edit
-
-If file tools are available, edit the named file in place. Otherwise ask for the relevant content or return a patch.
-
-Read the complete relevant section, make targeted edits, and re-read the result.
-
-Report changes at the level useful for review:
-
-- for small edits, give one compact summary;
-- for larger edits, group changes by section or change type;
-- list individual locations only when they help the user review a material or potentially risky change;
-- mention protected content intentionally preserved only when it is relevant or non-obvious.
-
-Do not produce a line-by-line changelog for routine local edits. Do not replace a whole file when local edits are sufficient, and do not paste the complete file unless requested.
-
-## Preservation contract
-
-This contract overrides every style rule and example below. A rewrite that changes meaning is a worse failure than formulaic prose.
-
-Unless the user explicitly requests a substantive change, preserve:
-
-- meaning, factual claims, intent, causality, scope, and degree of certainty;
-- attribution, quotations, citations, links, footnotes, and source relationships;
-- names, dates, numbers, units, product terms, terminology, and definitions;
-- code, commands, flags, paths, identifiers, API names, formulas, schemas, tables, and machine-readable structures;
-- required headings, template fields, ordered procedures, locale conventions, and intentional dialect;
-- legitimate qualifications, limitations, negative results, and uncertainty;
-- the source's established register and useful structure.
-
-Never:
-
-- invent evidence, specificity, actors, mechanisms, examples, metrics, quotations, experiences, emotions, opinions, or preferences;
-- strengthen causality or certainty;
-- broaden the sender's authority, ownership, or commitments; scope offers of access, implementation help, approval, or support to the team and systems established by the source;
-- rewrite quoted or attributed material as the author's prose;
-- replace exact technical language with a less precise approximation;
-- add errors, randomness, slang, anecdotes, or irregularity merely to appear human;
-- silently correct suspected factual or technical errors; flag them separately.
-
-Treat a detail as unsupported only when it exceeds or conflicts with the supplied facts, sources, or constraints. Do not delete a substantive claim merely because the user did not provide a citation; preserve it or flag it separately.
-
-Purely promotional modifiers that add no testable meaning may be removed when doing so does not alter a substantive claim.
+- Keep every claim, number, unit, date, name, identifier, code span, link, quotation, and
+  citation. Keep causality, scope, chronology, and the degree of certainty.
+- Keep the author's position: criticism stays criticism, disagreement stays disagreement,
+  a recommendation stays a recommendation. Don't soften it to sound diplomatic or sharpen
+  it to sound confident.
+- Keep the status of each statement. A finding stays a finding, a proposal stays a
+  proposal ("we could" never becomes "we will"), an open question stays open, and a
+  decision or commitment appears only if it was actually made.
+- Never invent facts, reasons, owners, dates, approvals, anecdotes, feelings, or
+  expertise. Unknowns stay unknown.
+- Keep the limits of the evidence at their original strength. If the source says a test
+  does not show something, the rewrite must not turn that into a finding; removing a
+  recognizable phrase never justifies changing what is known.
+- Claim only work that happened. "Tested", "validated", "migrated", "reviewed", "sent",
+  "fixed" appear only when the source or the user says that action was done.
+- Write from the author's real role. Don't turn an engineer reporting to his manager into
+  a consultant, auditor, or executive who assigns owners and sets governance.
+- Never add typos, slang, fake informality, or random fragments to look human. Remove
+  the tells; don't add noise.
+- Keep required formats: a template the company requires, a table the reader asked for,
+  numbered steps in a procedure, code blocks.
+- Do not silently correct suspected factual or technical errors while editing style.
+  Preserve the source's claim and flag the concern separately; correct it only when
+  the user asks for fact correction and there is supporting evidence.
 
 ## Workflow
 
-1. Infer the document's language, genre, audience, purpose, and intended register.
-2. Identify protected claims, spans, structures, terminology, attribution, and uncertainty.
-3. If writing samples are supplied, calibrate to them; otherwise preserve the source's established voice.
-4. Audit for meaningful patterns. Prioritize structural problems and local clusters over isolated words, punctuation, or formatting.
-5. Patch local problems. Rebuild only when the structure is formulaic throughout.
-6. Run the `Final check`.
+### 1. Pin down the situation
 
-For long documents, internally:
+Work this out from the conversation and files, silently. Don't print a questionnaire.
 
-- audit the overall structure before editing individual sentences;
-- work section by section;
-- keep a running inventory of protected claims and spans;
-- maintain consistent terminology and voice across sections.
+- **Author:** who signs it, their role, how involved they were in the work.
+- **Reader:** who reads it, their relationship to the author, and what they already know.
+  A direct manager who knows the system is a different reader from a VP who doesn't.
+  A senior title doesn't mean the reader needs formal prose or less technical detail.
+- **Purpose:** what the author wants after the reader finishes: a decision, approval,
+  time, awareness of a risk, an answer.
+- **Form:** channel and genre (see the table), language, length limit, required template.
+  Treat "brief", "short", and "one sentence" as hard constraints on the delivered text.
+  Keep what the reader needs; don't repeat detail already available in an attached or
+  linked document unless the message is unintelligible without it. Never hide a
+  material omission made for brevity.
+- **Voice:** real writing samples by the author, if any exist in the conversation or
+  project (for example a `voice-profile.md`; template in `references/voice-profile.md`).
+  Never learn the author's voice from AI drafts, and don't assume the way he writes to an
+  assistant is how he writes to his boss.
 
-Do not expose this working inventory or narrate the process unless the user requests it. Group user-facing findings by section only when that improves navigation.
+Ask one short question only when a wrong guess would produce a different document (for
+example, unclear whether this is private prep notes or something the manager will read).
+Otherwise pick the sensible reading and note it in one line.
 
-## Decision rules
+| Intended use                       | Starting form                                                               | Don't add unless asked                                       |
+| ---------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Private notes or talking points    | Short reminders, numbers, real questions, in speaking order                 | Header block, timeboxes, owner matrix, executive summary     |
+| Status update or report to manager | The news first, then the evidence, then the ask                             | Purpose section, "Key findings" with bold labels, conclusion |
+| Email or chat message              | Answer or ask in the first lines, needed context, one clear request         | Headings, bold, sign-off formulas, recap                     |
+| Proposal or design doc             | Problem with numbers, the option chosen and why, cost, risks, what's needed | "Why it matters", "Overview", balanced pros/cons theater     |
+| Shared agenda                      | Topics and what to prepare                                                  | Minute slots, chair, decision framework                      |
+| Minutes after a meeting            | What was discussed, decided, and left open; owners only if assigned         | Decisions or owners nobody agreed to                         |
+| Required company template          | The template, filled with real content                                      | Invented content to fill empty fields                        |
 
-### Usually fix
+### 2. Build a fact sheet
 
-- assistant-facing chatter in finished content;
-- unresolved placeholders, internal references, or tool markup;
-- unsupported promotional or significance claims;
-- vague authorities presented as evidence;
-- generic framing that delays or replaces the claim;
-- repetitive previews, recaps, and conclusions;
-- filler, empty hedging, synonym cycling, and low-information repetition;
-- formulaic structure that makes sections interchangeable;
-- loaded framing that biases a decision the text asks the reader to make.
+Before writing, list for yourself (not for the user):
 
-**Loaded framing.** When the text asks the reader to choose between options, or asks for approval, do not present one option as already done, already shipped, or expensive to change unless that fact is the point. Phrases like "this is the current behavior", "already implemented", or "would require rework" push the reader toward the status-quo option to avoid creating work for the author, so the answer stops being about what is correct. Keep the options neutral and equal. State an existing implementation only when the reader needs it to decide, and keep it separate from the options themselves.
+- every claim, number, date, name, identifier, link, and code span;
+- for each statement, its status: fact, finding, estimate, opinion, proposal, question,
+  decision, commitment;
+- the caveats and unknowns that must survive;
+- what the author is asking the reader for.
 
-### Context-dependent
+When rewriting existing text, the fact sheet comes from the source. Phrases like "plays a
+crucial role" or "significantly improves" carry no fact; if a claim has no number or
+concrete detail behind it, drop the adjective, keep the claim at the strength the source
+supports, and flag it to the user if it matters.
 
-Do not treat these as problems by themselves:
+### 3. Write
 
-- passive voice;
-- first person, contractions, fragments, humor, or opinion;
-- em dashes, bold, lists, headings, emoji, or curly quotes;
-- sentence and paragraph length;
-- formal or technical vocabulary;
-- uncertainty language;
-- repetition used for clarity, terminology, procedure, or rhetoric.
+Decide between patching and rebuilding by what is actually wrong, not by who wrote the
+source:
 
-These are context-dependent, not free. Two of them are common reader-facing tells and become a `Register mismatch` finding when the context works against them:
+- **Rebuild** from the fact sheet when the role, relationship, or genre is wrong, the
+  argument is in the wrong order, or structure-level tells run through the whole text
+  (section scaffolding, bold-label bullets everywhere, wrap-ups, uniform rhythm). Don't
+  paraphrase such a text sentence by sentence; that keeps its skeleton.
+- **Patch** when the situation and structure are right and the tells are local phrases or
+  words. Fix those spots and leave the rest alone.
+- A text the user already accepted, or one that is direct and specific, gets patched or
+  left unchanged, even if a model wrote it.
 
-- **Em dash (`—`).** Many readers treat a long em dash as an AI signature. When the author's own writing does not already use em dashes, or when the goal is prose that does not read as AI-generated, default to a hyphen, comma, colon, or a period. Keep em dashes only when the supplied voice clearly uses them. Never introduce em dashes that were not in the source. This applies to your own commentary around the edit, not only the edited text.
-- **Native idioms and phrasal flourishes** (for example `nail down`, `lean toward`, `weigh in`, `lands in`, `dial in`). They are fine in native, informal English, but they clash with a non-native author's register and read as inserted polish. Prefer plain, literal wording unless the author's voice already uses such idioms.
+The scanner's `suggestion` line (step 4) is a hint for this decision. It never forces a
+rebuild on its own.
 
-## Finding names
+Follow these rules. `references/patterns.md` has the full catalog with before/after
+examples; `references/examples.md` has complete worked rewrites.
 
-Use only these names in `Detect` output. A closed vocabulary keeps repeated audits and downstream tooling consistent.
+**Structure**
 
-If no canonical name fits, do not force the observation into the closest category and do not invent a new label. Mention it separately in `Assessment` if it is relevant.
+- Start with the point: the news, the number, the problem, or the ask. No purpose
+  statement ("This document outlines..."), no background lap before the point.
+- Use headings only when the text is long enough to need navigation (roughly 400+ words)
+  or the template requires them. Sentence case, no emoji.
+- Use a list only for items that really are parallel (steps, a set of options, several
+  failures). Don't break an argument into bullets. Never start bullets with bold labels
+  ("**Impact:** ...").
+- Count things as they are. Two reasons are two. Don't pad to three, don't trim to three.
+- No closing summary, "Overall", "Key takeaways", or moral at the end of a paragraph or
+  document. End when the content ends, usually with the ask or the next concrete action.
+- Let paragraphs differ in length and shape. Not every paragraph needs a topic sentence
+  and a wrap-up sentence.
+- In durable reference documentation, describe the current behavior, not the diff that
+  introduced it: "Parameter X controls retries", not "We added Parameter X".
+  Changelogs, release notes, migration guides, and PRs may describe changes.
 
-- **Chatbot leakage:** assistant-facing chatter remains in finished content.
-- **Placeholder or citation leakage:** unresolved markers, internal references, or tool markup remain.
-- **Unsupported specificity:** a detail, mechanism, actor, or degree of certainty exceeds the supplied material.
-- **Unsupported inflation:** importance, novelty, transformation, or broad implications are asserted without support.
-- **Promotional language:** praise substitutes for observable behavior.
-- **Vague attribution:** unnamed experts, reports, observers, or consensus are used as authority.
-- **Generic framing:** removable boilerplate, ceremonial openings, transitions, or conclusions delay or replace the document-specific claim.
-- **Repetitive signposting:** previews, recaps, headings, or conclusions repeat information without aiding navigation.
-- **Low-information repetition:** a passage restates a point without adding evidence, reasoning, or consequence.
-- **Hedge stacking:** several qualifiers express no more precision than one accurate qualifier.
-- **Synonym cycling:** one entity is repeatedly renamed instead of using its exact term.
-- **Formulaic structure:** sentence shapes, paragraph order, headings, or rhetorical templates repeat mechanically.
-- **Register mismatch:** tone, rhythm, wording, or formatting conflicts with the audience, medium, source, or supplied voice.
-- **Diff-anchored documentation:** durable documentation describes a past change instead of current behavior.
-- **Formatting overuse:** decorative structure obscures the content.
+**Sentences**
+
+- Use plain verbs: is, are, has, was. "X is the main table", not "X serves as".
+- Don't hang a significance comment on the end of a sentence (", ensuring...",
+  ", highlighting the need for..."). If the consequence matters, state it as a fact in its
+  own sentence.
+- Don't frame a point against a claim nobody made: "not just X but Y", "this isn't about
+  X, it's about Y", "Y rather than X" used as a rhythm. Say Y. One "rather than" where
+  there is a real alternative is fine.
+- No setup-reveal: "The result? ...", "Here's why: ...", "The bottom line: ...".
+- No hedging disclaimers ("does not by itself establish", "based on the available
+  information"). If something is uncertain, say concretely what is unknown: "We have no
+  data for November yet."
+- Mix sentence lengths the way the logic goes: a long sentence when two facts belong
+  together, a short one for a decision. Avoid both the even 15-word drone and the newer
+  staccato of 6-to-10-word declaratives.
+- Lead with a material condition: "Yes, if X is enabled", not "Yes" followed by
+  "but only if X is enabled" later. Keep the boundary as prominent as the answer.
+
+**Words**
+
+- Plain, specific words: use, help, check, fix, show, need, start, about, the table name,
+  the job name, the number. "The scheduled import failed 4 times in October", not
+  "reliability challenges".
+- Default-banned words and phrases are in `references/patterns.md` (delve, leverage,
+  robust, seamless, pivotal, crucial role, foster, streamline, ensure that, it's worth
+  noting, this matters, deep dive, circle back, and others). Rewrite the sentence; don't
+  swap in a sibling synonym ("utilize" for "leverage" is the same smell).
+- Repeat the exact term. Don't rotate synonyms for the same table, service, or metric.
+- Praise and importance words need a number behind them or they go.
+
+**Punctuation**
+
+- No em dashes in English unless the author's own samples use them. Use a comma, colon,
+  parentheses, or a new sentence.
+- Don't overcorrect into commas and periods only. Parentheses, a colon before a list, an
+  occasional semicolon are normal in human writing.
+- Straight quotes in Markdown and chat. In Russian and Ukrainian the dash is ordinary
+  punctuation and stays.
+
+**Register for documents to a manager or leadership**
+
+- Write as the person who did the work. "I" for what the author did or found, "we" only
+  for things the team really did or agreed.
+- Give bad news plainly with the cause: "The migration is two weeks late because the
+  vendor API changed", not "We have encountered some challenges".
+- Make the ask explicit and answerable: "Can I take this in the current sprint? The
+  activity report would move to the next one."
+- Don't ask the reader questions the author already knows the answer to, don't assign
+  owners or deliverables unless the author has that authority and wants to, and don't add
+  governance machinery (decision frameworks, RACI, timeboxed agendas) nobody asked for.
+- No selling. A number beats "significant improvement".
+- When asking the reader to choose or approve an option, compare the actual merits
+  without loaded framing. "Already implemented", "current behavior", and "would
+  require rework" belong in the explanation only when they are verified and relevant
+  decision costs, not as a shortcut to favor the status quo. Don't hide real migration
+  costs or imply options are equal when evidence says otherwise.
+- Non-native English: plain and literal. No native idioms the author doesn't use
+  ("nail down", "move the needle", "low-hanging fruit", "circle back").
+- One "Thanks" is fine where the author would write it. No "I hope this finds you well",
+  no "Let me know if you have any questions".
+
+### 4. Scan
+
+Save the draft to a file (and the source, if there is one) and run the scanner:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/ai_tells.py" draft.md                      # pattern scan
+python3 "${CLAUDE_SKILL_DIR}/scripts/ai_tells.py" draft.md --source original.md # plus token check
+python3 "${CLAUDE_SKILL_DIR}/scripts/ai_tells.py" draft.md --lang ru            # force language
+python3 "${CLAUDE_SKILL_DIR}/scripts/ai_tells.py" draft.md --allow "primary key" --allow-category em-dash
+```
+
+Claude Code replaces `${CLAUDE_SKILL_DIR}` with this skill's folder. In other hosts, use
+the folder this SKILL.md was loaded from. For a short text with no file, pipe it in with
+`-` as the path.
+
+The output gives an advisory `suggestion` line, stats on sentence rhythm, each hit with
+severity, line, excerpt, and reason, and (with `--source`) a token check. The scanner's
+severities measure how strongly a pattern reads as AI, not how much harm it does; the
+"Severity" section below decides priorities.
+
+- Fix HIGH and MEDIUM hits by rewriting the sentence, not by swapping the flagged word.
+- A hit is a legitimate exception when it is a term of art ("primary key", "critical
+  path"), a quotation, a required template field, or the author's documented habit.
+  Accept it explicitly: rerun with `--allow "PHRASE"` (or `--allow-category CATEGORY`
+  for a whole habit, such as em dashes in an author who uses them) and keep a one-line
+  note of why. Accepted exceptions then stop counting, so they can't trigger endless
+  rework.
+- LOW hits are prompts to look. Fix the ones that read as tells in context.
+- Token check, `missing from draft`: must end up empty, or each item must be a deliberate,
+  explained removal (for example, the user asked for a shorter version).
+- Token check, `new in draft`: every new number, date, identifier, or URL needs support
+  from the user or the conversation. If it has none, remove it.
+- Token check, `negations` changed: re-read each negated claim against the source.
+- The token check sees only presence. It can't tell that a claim was reversed or a
+  limitation dropped; step 5 covers that.
+- Run again after fixing. Stop when no HIGH hits remain, every remaining MEDIUM hit is
+  fixed or accepted with a reason, and the token check is clean or explained.
+
+If no shell is available, go through the checklist at the end of `references/patterns.md`
+by hand, line by line, and tell the user the scan was manual.
+
+### 5. Read it as the recipient
+
+The scanner sees surface patterns only. Read the final text once more, start to finish,
+as the actual reader:
+
+- Would the author say each sentence out loud to this person without embarrassment?
+- Is the first paragraph the thing the reader most needs?
+- Could any paragraph be pasted into a different company's document unchanged? Then it
+  says nothing; replace it with the specific fact or cut it.
+- Does every adjective of importance have a number or a concrete detail behind it?
+- Does the author sound like an insider who knows the system, or an outsider evaluating
+  it?
+- Are proposals still proposals and open questions still open? Did "we" grow into a team
+  commitment nobody made?
+- Do the sections all have the same shape (intro sentence, three bullets, wrap-up)?
+- Is anything the user rejected earlier back under a different wording?
+- Compare every claim with the fact sheet: same status, same certainty, same limits. A
+  "does not show" in the source must not have become a positive finding.
+- Does the text say that something was tested, checked, sent, migrated, or reviewed? Each
+  such statement must match work the source or the user reports as done.
+- Are options described without status-quo pressure, and are real implementation costs
+  kept when relevant to the decision?
+- Does a conditional answer state the condition up front? Is durable documentation
+  describing current behavior rather than a historical diff?
+
+If a check fails, fix the section, rescan, and read again.
+
+### 6. Deliver
+
+- **Draft or rewrite:** return the finished text, ready to paste. No preamble, no
+  "Here's the revised version", no list of what changed. Keep chat and email text plain
+  (no Markdown) unless the user asked for formatting.
+- **Edit a file:** change it in place, re-read the saved file, and report the changes in
+  two or three lines.
+- After the text, add a short note only when the user must act on something: a fact that
+  had to be dropped or could not be verified, a flag kept on purpose, an assumption about
+  the reader. Don't claim the text is "now human" or "undetectable".
+- Anything you say about your own work must match what you did: say "scanned" only if
+  the scanner ran (otherwise "checked by hand"), "saved" only after the file was written
+  and re-read, "all facts kept" only if the token check and the step 5 comparison passed.
 
 ## Severity
 
-Assign severity by damage to the document, not by word frequency or association with AI-writing lists.
+Rank findings by what they would do to the author if the text went out, not by how many
+patterns matched. This scale is used in Detect output and when deciding what to fix first.
 
-- **High:** meaning or credibility risk, including leaked placeholders, fabricated-looking attribution, unsupported factual detail, chatbot leakage, or severe unsupported inflation.
-- **Medium:** clear formulaic structure, low-information repetition, vague claims, or register mismatch.
-- **Low:** local polish or a weak pattern that may be acceptable in context.
+- **High:** a changed fact, number, or claim status; a limitation turned into a finding;
+  an invented commitment, owner, date, or completed action; the author's position softened
+  or reversed; the wrong role or relationship (insider written as consultant); a genre
+  mismatch with real consequences; chatbot leakage or placeholders.
+- **Medium:** structure-level AI patterns that make the text read as generated (section
+  scaffolding, bold-label bullets, wrap-ups, uniform or staccato rhythm), a register that
+  doesn't fit the reader, clusters of AI vocabulary or framing.
+- **Low:** isolated words or punctuation, local polish.
 
-An isolated stylistic feature is usually low severity or not a finding. A single provenance, attribution, placeholder, or unsupported-specificity failure may still be high severity.
+One invented "we will deliver by Friday" outweighs any number of style hits. Never fix a
+style hit in a way that creates a High finding.
 
-## Patch versus rebuild
+## Detect mode
 
-Patch when the argument and paragraph order are sound.
+When asked to check a text (not rewrite it): do the step 1 situation check and the step 5
+read, then run the scanner. Report findings grouped by the severity scale above, meaning
+and role findings first, each with the excerpt, the reason, and a concrete fix. Name
+meaning and role findings with these labels: Role or relationship mismatch, Authority
+drift, Commitment drift, Unsupported completed-work claim, Artifact mismatch,
+Shared-context mismatch, Stance drift, Limitation drift, Feedback regression. Pattern
+findings use the scanner's category names. Mention the scanner suggestion only as
+supporting evidence. If the text is clean, say so; don't invent findings.
 
-Rebuild a section only when several of these are true:
+When asked whether something was written by AI: report the patterns found and say plainly
+that style alone can't prove authorship. Detector scores are unreliable (Wikipedia's own
+guidance says they have non-trivial error rates and are thrown off by paraphrasing), so
+don't optimize for them; the target is the human reader, and that is what this workflow
+fixes.
 
-- paragraphs can be reordered without changing the argument;
-- most paragraphs restate rather than advance the point;
-- formulaic openings and closers dominate;
-- sentence and paragraph shapes are uniform throughout;
-- local substitutions leave the same generic structure intact.
+## When the user says it still sounds wrong
 
-Before rebuilding, inventory the supported claims and protected spans. Verify that all remain afterward.
+Treat "this is not how I talk to my manager", "too corporate", or "still smells like AI"
+as evidence that the situation or genre in step 1 was wrong, not as a request to tweak
+wording or formatting. Rebuild the affected sections from the fact sheet, then check the
+whole text for the same failure, not just the line the user pointed at. Keep every edit
+the user accepted earlier. If the user names a phrase or structure they don't want, treat
+it as a standing rule for the rest of the task.
 
-## Voice matching
+## Don't overcorrect
 
-Use voice matching only when the user supplies writing samples or explicitly requests an established voice.
+- Formal vocabulary, perfect grammar, passive voice in a methods section, and transition
+  words in isolation are not AI tells (Wikipedia lists them as ineffective indicators).
+- A long design doc may need headings, tables, and numbered steps. Remove decoration, not
+  structure the reader uses.
+- Exact technical terms repeat. That is correct.
+- Text that is already direct and specific gets few or no changes. "No changes needed" is
+  a valid result.
+- Don't replace one formula with another: a doc where every paragraph opens with a short
+  punchy sentence is as mechanical as one where every paragraph ends with a summary.
 
-Evidence priority:
+## References
 
-1. samples supplied for the current task;
-2. prior samples explicitly identified as the author's;
-3. explicit style requirements;
-4. the source document's existing register;
-5. conservative genre defaults.
-
-Record only observable features such as:
-
-- register and directness;
-- sentence and paragraph shape;
-- transition style;
-- contractions and punctuation;
-- recurring terminology;
-- use of first person, humor, opinion, and uncertainty.
-
-Do not infer identity, personality, beliefs, history, emotions, or preferences.
-
-A short sample can guide broad register and punctuation but not a strong voice profile. Match recurring patterns, not memorable phrases. When evidence is weak, preserve the source rather than imposing a persona.
-
-When the author is a non-native English speaker, or writes to a non-native audience, default to plain, direct, literal English: short sentences, common words, and simple punctuation. Do not upgrade this register to fluent native idiom, and do not add em dashes or phrasal idioms as "polish." If the author's English level or preferred register is unclear and it affects the result, ask before imposing a native register.
-
-Named tones such as `professional`, `warm`, or `blunt` are requests, not evidence of the author's natural style. Do not interpret them as permission to invent intimacy, emotion, anecdotes, certainty, or opinions.
-
-## Context exceptions
-
-Select the context before editing.
-
-- **Technical documentation:** preserve exact terms, identifiers, compatibility constraints, procedures, lists, tables, and current behavior. Diff-oriented language is valid in changelogs, migration guides, release notes, and pull requests.
-- **Scientific writing:** preserve numerical precision, units, methods, passive voice where appropriate, uncertainty, limitations, negative results, and distinctions between association and causation.
-- **Research reports:** preserve traceability among observations, source claims, interpretation, inference, and unknowns. Executive summaries may legitimately repeat the report.
-- **Email and chat:** greetings, thanks, sign-offs, contractions, and concise restatements may fit the relationship and medium.
-  - If the answer is conditional, put the condition in the opening sentence. Do not begin with an unconditional answer and reveal the actual boundary later.
-  - For optional next steps between colleagues, prefer collaborative language such as `you can send me` or `we can check` over directives such as `send me` or `provide`. Keep direct imperatives when the action is genuinely mandatory or urgent.
-  - A short reply should normally contain one direct-answer paragraph, one short explanation, and one optional next step. Avoid headings, all-caps labels, and multiple lists unless the message cannot be understood without them.
-  - Do not add markdown headings, bold, or heavy structure to a short message; people write plain lines or a simple list. Reserve headings and bold for long documents where they aid navigation. A two-line message never needs a heading.
-  - For copy-ready chat or email text, output plain text unless the user explicitly requests another format, Slack mrkdwn, or an API payload. Do not use blockquotes, fenced blocks, backticks, bold, Markdown links, headings, or labels such as `Revised version`. Preserve URLs as bare URLs and use literal bullet characters when needed.
-- **Product documentation:** prefer observable behavior over promotional description. Preserve reference structures and repeated product terms.
-- **Pull requests and release notes:** before-and-after language, bullets, and checklists are often appropriate. Verify claims against the supplied diff or facts.
-- **Decision memos:** preserve decisions, options, assumptions, trade-offs, confidence, and uncertainty.
-- **Essays and articles:** inspect the argument before polishing individual sentences. Preserve deliberate rhetoric and authorial voice.
-- **Social posts:** fragments, hooks, short paragraphs, direct address, and limited emoji may be native to the platform. Do not add engagement bait.
-- **Personal writing:** preserve comprehensible irregularities, mixed rhythm, slang, and unresolved emotion. Never invent or intensify feelings.
-- **Creative writing:** metaphor, personification, fragments, repetition, and unusual punctuation may be intentional craft.
-- **Non-English writing:** use the language's native grammar, idiom, punctuation, and register. Do not translate English lexical blacklists.
-
-## Final check
-
-Before returning a rewrite or completing an edit, compare the result with the source and confirm that:
-
-- no substantive claim was lost unless the user requested its removal;
-- nothing was invented;
-- causality, certainty, attribution, scope, and intent did not shift;
-- the sender's authority and commitments did not expand beyond the supplied facts;
-- quotations, citations, links, code, identifiers, numbers, units, terminology, procedures, and formatting remain intact;
-- the result matches the intended audience, language, context, and supplied voice;
-- each change produces a concrete improvement.
-
-For email and chat, also run a compression pass:
-
-- remove detail already available in an attachment or linked document;
-- state each limitation once;
-- remove repeated team or product names when the referent is clear;
-- keep only details that change what the recipient should understand or do next;
-- confirm that the result still sounds like one colleague writing to another.
-
-Before returning copy-ready text, verify:
-
-- the response contains only words the user should send;
-- no assistant commentary appears before or after the message;
-- the message does not explain the preceding conversation;
-- contextual details are omitted unless they change what the recipient must understand or do;
-- plain text remains plain when copied;
-- the result is no longer than requested.
-
-Where the source was already direct, specific, cohesive, and appropriate, restore it. No change is better than an unnecessary rewrite.
-
-## Boundary examples
-
-- Preserve scientific passive voice when the actor is irrelevant:
-  `Samples were incubated for 20 minutes at 37 °C.`
-- Reduce stacked uncertainty without removing real uncertainty:
-  `could potentially have reduced` → `may have reduced`
-- Preserve exact component names instead of cycling synonyms.
-- Do not edit promotional wording inside a quotation when the quotation is evidence.
-- If prose is already direct, specific, cohesive, and appropriate, return it unchanged.
+- `references/patterns.md`: the catalog of tells with fixes, and the manual checklist.
+- `references/examples.md`: complete before/after rewrites (status update, Slack
+  message, proposal, Russian status note).
+- `references/context-cases.md`: role and genre failures (insider written as auditor,
+  talking points turned into a facilitated agenda, proposals promoted into promises).
+- `references/voice-profile.md`: template for the author's own writing samples.
+- `scripts/ai_tells.py`: the advisory scanner and token check.
+- `SOURCES.md`: where each rule comes from and which ones are design choices.

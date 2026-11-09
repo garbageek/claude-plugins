@@ -1,5 +1,5 @@
 interface:
   display_name: "Humanizer"
-  short_description: "Revise formulaic prose while preserving author voice"
+  short_description: "Write or fix text sent in the user's name, without AI tells"
   icon_small: "./assets/icon.png"
   icon_large: "./assets/icon.png"

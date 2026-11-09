@@ -1,10 +1,9 @@
 {
   "name": "artur-plugins",
-  "version": "1.2.0",
+  "version": "1.3.2",
   "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, and Claude/Codex plugin authoring and installation management.",
   "author": {
-    "name": "Artur Kulik",
-    "url": "https://mycmdline.com"
+    "name": "Artur Plugins contributors"
   },
   "repository": "https://github.com/garbageek/claude-plugins",
   "keywords": [
@@ -20,7 +19,7 @@
     "displayName": "Artur Plugins",
     "shortDescription": "Engineering skills for agents",
     "longDescription": "Engineering workflows for code review, debugging, agent-session diagnosis, architecture, implementation planning, audit tickets, project recovery, codebase documentation, repository guidance, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
-    "developerName": "Artur Kulik",
+    "developerName": "Artur Plugins contributors",
     "category": "Developer Tools",
     "capabilities": [
       "Review code and regressions",
