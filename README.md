@@ -273,7 +273,7 @@ Installing the toolkit supplies the **customizer**, not a review skill already i
 /artur-plugins:humanizer
 ```
 
-[humanizer](skills/humanizer/SKILL.md) detects, rewrites, or edits formulaic prose when writing quality is requested. It handles technical documentation, PR descriptions, review comments, messages, and other prose while preserving meaning, certainty, code, identifiers, numbers, citations, and the sender's authority and commitments. Detect mode does not rewrite; already-clear text may remain unchanged. This is prose editing, not prompt design, an authorship detector, or an automatic filter on unrelated answers.
+[humanizer](skills/humanizer/SKILL.md) drafts, rewrites, and checks work-related prose sent in the user's name, including reports, proposals, technical documentation, emails, and chat. It preserves meaning, facts, numbers, certainty, and the author's role while removing recognizable AI-writing patterns. It includes an advisory Python scanner and token-preservation check, supports English, Russian, and Ukrainian, and can activate when drafting without a separate humanize request. It does not determine AI authorship or optimize detector scores.
 
 ### Codex on Ubuntu
 
