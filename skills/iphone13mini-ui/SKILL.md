@@ -134,19 +134,19 @@ and collapsed, keyboard open, landscape) and keep the JSON probe with each PNG.
 ### Compare local and real captures
 
 ```bash
-python3 -B "$SKILL_DIR/scripts/compare.py" align --reference out/real-screen.png --candidate out/portrait.png --output-dir out/aligned --roi-top 135 --roi-bottom 2187
+python3 -B "$SKILL_DIR/scripts/compare.py" align --reference out/real-screen.png --candidate out/portrait.png --output-dir out/aligned --roi-top "$ROI_TOP" --roi-bottom "$ROI_BOTTOM" --dpr 3
 python3 -B "$SKILL_DIR/scripts/compare.py" raw --reference out/real-page.png --candidate out/portrait.png --output-dir out/raw
 ```
 
-`align` applies only an integer shift and reports it: a shift can itself be a
-layout defect. It refuses scale/rotation mismatches instead of hiding them.
-`raw` needs identical geometry unless `--resize-candidate` is passed
-explicitly. Compare local captures with each other only when their
+I set `ROI_TOP` and `ROI_BOTTOM` to measured screen-pixel boundaries for the
+*supplied reference*. For a page-only screenshot without Safari chrome, I omit
+the ROI flags. `align` applies only an integer shift and reports it: a shift
+can itself be a layout defect. It refuses scale/rotation mismatches instead of
+hiding them. `raw` needs identical geometry unless `--resize-candidate` is
+passed explicitly. Compare local captures with each other only when their
 `playwrightVersion` and `browserVersion` match; a different engine build is a
-different renderer. The ROI bounds above belong to the bundled calibration frame;
-measure them again for a new screenshot. Inspect `overlay.png` and
-`diff-3x.png`; the numbers in `report.json` are raw RGB statistics. Details:
-[calibration](references/calibration.md).
+different renderer. Inspect `overlay.png` and `diff-3x.png`; the numbers in
+`report.json` are raw RGB statistics. Details: [calibration](references/calibration.md).
 
 ## Reporting
 
@@ -163,5 +163,5 @@ exists, end with the specific device states still to check.
   symptom-to-cause table.
 - [Real device](references/real-device.md): pymobiledevice3 setup, CDP bridge,
   screenshots, HID input, capture protocol.
-- [Calibration](references/calibration.md): the bundled real-Safari reference
-  frame, ROI geometry, viewport sweep.
+- [Calibration](references/calibration.md): prepare a user-supplied screenshot,
+  measure its ROI, compare it with local captures, and run a viewport sweep.

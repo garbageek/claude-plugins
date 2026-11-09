@@ -19,8 +19,6 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 LOGGER = logging.getLogger("iphone13mini")
-SKILL_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_REFERENCE = SKILL_DIR / "assets" / "calibration" / "real-safari-original-display-p3.png"
 
 PROBE_JS = r"""() => {
   const measure = (property, value) => {
@@ -365,6 +363,8 @@ def sweep(args: argparse.Namespace) -> dict:
     """Reuse the capture and alignment implementations, no subprocess scripts."""
     from compare import compare_aligned
 
+    if not args.reference.is_file():
+        raise ValueError(f"Reference does not exist: {args.reference}")
     output = args.output_dir.expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
     results = []
@@ -390,7 +390,7 @@ def sweep(args: argparse.Namespace) -> dict:
             else:
                 result = compare_aligned(
                     args.reference, png, output / f'compare-{height}', args.roi_top,
-                    args.roi_bottom, args.threshold, args.min_inliers,
+                    args.roi_bottom, args.threshold, args.min_inliers, dpr=3,
                 )
                 entry.update(status='compared', registration=result['registration'], diff=result['diff'])
         except Exception as exc:
@@ -460,9 +460,10 @@ def main() -> int:
 
     views = commands.add_parser('sweep', help='Capture candidate heights and align with iPhone reference')
     views.add_argument('--url', required=True)
-    views.add_argument('--reference', type=Path, default=DEFAULT_REFERENCE)
+    views.add_argument('--reference', type=Path, required=True,
+                       help='User-supplied Safari screenshot (never bundled)')
     views.add_argument('--output-dir', type=Path, default=Path('out/sweep'))
-    views.add_argument('--heights', type=parse_heights, default=parse_heights('629,684,700,728,812'))
+    views.add_argument('--heights', type=parse_heights, default=parse_heights('629,700,812'))
     views.add_argument('--engine', choices=('webkit', 'chromium'), default='webkit')
     views.add_argument('--executable', help='Chromium/Chrome binary for --engine chromium')
     views.add_argument('--safe-area', type=parse_safe_area,
@@ -470,8 +471,8 @@ def main() -> int:
     views.add_argument('--color-scheme', choices=('light', 'dark', 'no-preference'), default='dark')
     views.add_argument('--scroll-y', type=int, default=0)
     views.add_argument('--strict-resources', action='store_true')
-    views.add_argument('--roi-top', type=int, default=135)
-    views.add_argument('--roi-bottom', type=int, default=2187)
+    views.add_argument('--roi-top', type=int, help='Measured top edge in reference image pixels')
+    views.add_argument('--roi-bottom', type=int, help='Measured exclusive bottom edge in reference image pixels')
     views.add_argument('--threshold', type=int, default=16)
     views.add_argument('--min-inliers', type=int, default=10)
     add_common_capture_flags(views)
