@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a lossless sRGB reference and optional ROI/landmarks from any supplied screenshot."""
+"""Prepare sRGB comparison images and optional ROI/landmarks from a supplied screenshot."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ import shutil
 from pathlib import Path
 
 from PIL import Image, ImageCms, ImageDraw, ImageFont
+
+from compare import SRGB, normalize_image
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 
@@ -51,33 +53,23 @@ def generate(args: argparse.Namespace) -> dict:
         raise ValueError(f"Reference does not exist: {source_path}")
     if output_dir == SKILL_DIR or SKILL_DIR in output_dir.parents:
         raise ValueError("Output directory must be outside the installed skill")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    dest_source = output_dir / f"reference-original{source_path.suffix.lower()}"
-    if source_path != dest_source:
-        shutil.copy2(source_path, dest_source)  # Keep source bytes, bit depth, ICC and metadata intact.
-
     with Image.open(source_path) as source:
         width, height = source.size
         image_format = source.format
         original = source.convert("RGB")  # sRGB comparison is explicitly 8-bit per channel.
-        exif = source.getexif()
-        timestamp = exif.get(36867) or exif.get(306)
         icc_data = source.info.get("icc_profile")
-        if icc_data:
-            profile = ImageCms.ImageCmsProfile(io.BytesIO(icc_data))
-            source_icc = ImageCms.getProfileName(profile).strip()
-            normalized = ImageCms.profileToProfile(
-                original, profile, ImageCms.createProfile("sRGB"), outputMode="RGB"
-            )
-        else:
-            source_icc = "untagged (sRGB assumed)"
-            normalized = original.copy()
+        normalized = normalize_image(source)
+        source_icc = (ImageCms.getProfileName(ImageCms.ImageCmsProfile(io.BytesIO(icc_data))).strip()
+                      if icc_data else "untagged (sRGB assumed)")
 
     top = 0 if args.roi_top is None else args.roi_top
     bottom = height if args.roi_bottom is None else args.roi_bottom
     if not 0 <= top < bottom <= height:
         raise ValueError(f"ROI must satisfy 0 <= top < bottom <= image height ({height})")
     has_explicit_roi = args.roi_top is not None or args.roi_bottom is not None
+    for entries in (args.anchor, args.sample):
+        if len({name for name, _ in entries}) != len(entries):
+            raise ValueError("Anchor and sample names must be unique within each group")
     for name, (x, y, w, h) in args.anchor:
         if x + w > width or y + h > height:
             raise ValueError(f"Anchor '{name}' is outside {width}x{height}")
@@ -85,7 +77,15 @@ def generate(args: argparse.Namespace) -> dict:
         if x >= width or y >= height:
             raise ValueError(f"Sample '{name}' is outside {width}x{height}")
 
-    srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    reserved = {output_dir / name for name in (
+        "reference-srgb.webp", "reference-roi-srgb.webp", "reference-annotated-srgb.webp")}
+    if source_path in reserved:
+        raise ValueError("Choose a different output directory to preserve the supplied source")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dest_source = output_dir / f"reference-original{source_path.suffix.lower()}"
+    if source_path != dest_source:
+        shutil.copy2(source_path, dest_source)
+    srgb = SRGB
     derived_images = ["reference-srgb.webp"]
     write_webp(normalized, output_dir / derived_images[0], srgb)
     if has_explicit_roi:
@@ -134,24 +134,16 @@ def generate(args: argparse.Namespace) -> dict:
         "source_format": image_format,
         "source_png_bit_depth_per_channel": png_bit_depth,
         "source_icc": source_icc,
-        "capture_timestamp_from_exif": timestamp,
         "reference_context": {"device": args.device, "url": args.url},
         "geometry": {
             "image_size_px": [width, height],
             "dpr_supplied_by_user": args.dpr,
             "comparison_roi_screen_px": {"x": 0, "y": top, "width": width, "height": bottom - top},
             "roi_user_supplied": has_explicit_roi,
-            "warning": "ROI excludes selected screen bands; it is NOT a measured DOM/visual viewport.",
         },
         "landmarks_screen_px": {name: {"box_px": list(box)} for name, box in args.anchor},
         "sampled_palette_not_authoritative_css": palette,
-        "unknown_from_static_png": [
-            "window.innerHeight", "visualViewport.height", "visualViewport.offsetTop",
-            "safe-area-inset values", "scrollY", "computed CSS layout",
-            "Safari toolbar expansion state and active foreground app",
-        ],
-        "normalization": "Embedded ICC to sRGB if present; otherwise sRGB assumed. "
-                         "Derived WebP is lossless 8-bit sRGB; original copied unchanged.",
+        "colorSpace": "8-bit sRGB; alpha on white; source copied unchanged",
     }
     path = output_dir / "calibration.json"
     path.write_text(json.dumps(profile, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -161,7 +153,7 @@ def generate(args: argparse.Namespace) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--reference", type=Path, required=True, help="User-supplied screenshot (not bundled)")
+    parser.add_argument("--reference", type=Path, required=True, help="Source screenshot")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--roi-top", type=int, help="Measured top edge in source image pixels")
     parser.add_argument("--roi-bottom", type=int, help="Measured exclusive bottom edge in source image pixels")
