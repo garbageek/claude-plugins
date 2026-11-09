@@ -495,7 +495,9 @@ NEGATION_RE = re.compile(r"\b(not|no|never|none|without|cannot)\b|n't\b|\b(не|
 
 
 def norm_num(s: str) -> str:
-    return re.sub(r"[\s,  ]", "", s).rstrip(".:").lower()
+    # Whitespace may group digits, but commas can be decimal separators (e.g. 1,5%).
+    # Preserve ambiguous punctuation and report it for review instead of losing precision.
+    return re.sub(r"\s", "", s).rstrip(".:").lower()
 
 
 def extract_tokens(text: str):
@@ -556,13 +558,16 @@ STRUCTURAL = {"inline-header-list", "formatting-overuse", "purpose-statement", "
 
 
 def mask_allowed(text: str, phrases):
-    """Replace allowed phrases with neutral words so they are not flagged but word counts hold."""
+    """Mask accepted phrases while retaining word counts and original line breaks."""
+    # Match horizontal whitespace or a single soft line wrap, never a blank paragraph.
+    whitespace = r"(?:[^\S\r\n]+|[^\S\r\n]*\r?\n[^\S\r\n]*)"
     for ph in phrases:
-        ph = ph.strip()
-        if not ph:
+        words = ph.split()
+        if not words:
             continue
-        rx = re.compile(r"(?<![\w])" + re.escape(ph) + r"(?![\w])", re.I)
-        text = rx.sub(lambda m: " ".join("ok" for _ in m.group(0).split()), text)
+        pattern = whitespace.join(map(re.escape, words))
+        rx = re.compile(r"(?<![\w])" + pattern + r"(?![\w])", re.I)
+        text = rx.sub(lambda m: re.sub(r"\S+", "ok", m.group(0)), text)
     return text
 
 
