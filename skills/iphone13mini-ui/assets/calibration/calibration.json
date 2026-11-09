@@ -1,0 +1,154 @@
+{
+  "reference_image": "real-safari-original-display-p3.png",
+  "source_png_bit_depth_per_channel": 16,
+  "source_icc": "Display P3",
+  "capture_timestamp_local_from_file_exif": "2026:11:09 03:00:44",
+  "reference_context": {
+    "device": "iPhone 13 mini (reported by user; image geometry consistent)",
+    "browser": "Safari, bottom floating toolbar",
+    "url": "https://rust-pocket-mini-ak.garbageek.chatgpt.site/#raid",
+    "orientation": "portrait",
+    "color_scheme": "dark",
+    "observed_state": {
+      "target": "Wooden door",
+      "quantity": 1,
+      "selected_method": "Auto",
+      "sulfur_cost": 900,
+      "ammo_count": 18,
+      "ammo_type": "explosive 5.56"
+    }
+  },
+  "geometry": {
+    "screen_render_pixels": [
+      1125,
+      2436
+    ],
+    "screen_css_points": [
+      375,
+      812
+    ],
+    "screenshot_scale": 3,
+    "physical_display_pixels_not_equal_screenshot": [
+      1080,
+      2340
+    ],
+    "status_bar_exclusion_y_px": [
+      0,
+      135
+    ],
+    "safari_toolbar_visible_y_px_approx": [
+      2190,
+      2334
+    ],
+    "safari_toolbar_exclusion_y_px": [
+      2187,
+      2436
+    ],
+    "comparison_roi_screen_px": {
+      "x": 0,
+      "y": 135,
+      "width": 1125,
+      "height": 2052
+    },
+    "comparison_roi_css_size_at_dpr3": [
+      375,
+      684.0
+    ],
+    "roi_warning": "Browser-chrome-free SCREEN region, NOT measured DOM or visual viewport. Do not use 684 as observed window.innerHeight."
+  },
+  "sampled_palette_not_authoritative_css": {
+    "page_background": {
+      "screen_position_px": [
+        5,
+        450
+      ],
+      "original_profile_sample": "#1C1F1B",
+      "converted_srgb_sample": "#1B1F1B"
+    },
+    "target_card_background": {
+      "screen_position_px": [
+        200,
+        700
+      ],
+      "original_profile_sample": "#262A23",
+      "converted_srgb_sample": "#252A22"
+    },
+    "selected_method_orange": {
+      "screen_position_px": [
+        150,
+        1020
+      ],
+      "original_profile_sample": "#F19F6B",
+      "converted_srgb_sample": "#FF9A60"
+    },
+    "summary_card_background": {
+      "screen_position_px": [
+        700,
+        1390
+      ],
+      "original_profile_sample": "#31372D",
+      "converted_srgb_sample": "#30372C"
+    },
+    "save_button_orange": {
+      "screen_position_px": [
+        650,
+        1850
+      ],
+      "original_profile_sample": "#F19F6B",
+      "converted_srgb_sample": "#FF9A60"
+    },
+    "safari_address_bar": {
+      "screen_position_px": [
+        550,
+        2230
+      ],
+      "original_profile_sample": "#3A3D38",
+      "converted_srgb_sample": "#393D38"
+    }
+  },
+  "landmarks_screen_px": {
+    "target_card": {
+      "box_px": [
+        57,
+        440,
+        1011,
+        366
+      ]
+    },
+    "selected_auto_method": {
+      "box_px": [
+        54,
+        947,
+        189,
+        160
+      ]
+    },
+    "sulfur_summary_card": {
+      "box_px": [
+        54,
+        1131,
+        1017,
+        525
+      ]
+    },
+    "save_plan_button": {
+      "box_px": [
+        622,
+        1794,
+        449,
+        144
+      ]
+    }
+  },
+  "unknown_from_static_png": [
+    "window.innerHeight",
+    "visualViewport.height",
+    "visualViewport.offsetTop",
+    "safe-area-inset values",
+    "scrollY",
+    "computed CSS layout",
+    "Safari toolbar expansion state"
+  ],
+  "normalization": "Embedded ICC -> sRGB if present; otherwise assume sRGB; converted to 8-bit per channel for pixel comparison",
+  "live_site_status": "Externally inaccessible (HTTP 401 at analysis time); no live Linux WebKit screenshot"
+}

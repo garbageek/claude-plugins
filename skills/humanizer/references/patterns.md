@@ -31,8 +31,8 @@ significant shift, a key milestone, setting the stage for, paving the way, under
 the importance of, highlights the need for, reflects broader, evolving landscape,
 valuable insights, "This matters", "Why it matters".
 
-- Before: "Migrating to streams will play a crucial role in improving reliability."
-- After: "With streams, a late file no longer breaks the load. All 9 October failures
+- Before: "Switching to incremental processing will play a crucial role in improving reliability."
+- After: "With incremental processing, a late file no longer breaks the load. All 4 October failures
   were late files."
 
 - Before: "This matters for two reasons."
@@ -45,9 +45,9 @@ A comma and an -ing clause appended to a factual sentence to comment on it: ", e
 ", contributing to ...", ", positioning us to ...". Russian: ", что позволяет ...",
 ", обеспечивая ...", ", подчёркивая ...".
 
-- Before: "The job failed 9 times in October, highlighting the need for a more robust
+- Before: "The job failed 4 times in October, highlighting the need for a more robust
   approach."
-- After: "The job failed 9 times in October."
+- After: "The job failed 4 times in October."
   (If the need for a fix is the point, the next sentence proposes the fix.)
 
 ## 4. Copula avoidance (MEDIUM) [WP]

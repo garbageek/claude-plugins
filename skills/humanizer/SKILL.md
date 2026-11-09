@@ -2,7 +2,7 @@
 name: humanizer
 description: Drafts, rewrites, and checks text that goes out under the user's own name (reports, status updates, design docs, proposals, emails, Slack messages, meeting notes, talking points for a manager or leadership) so it reads as written by that person and carries no AI tells. Use whenever drafting or editing such text, even if the user never says "humanize", and when asked to humanize, de-slop, remove AI smell, make text sound less like ChatGPT/GPT/Claude, rewrite in their voice, or check whether text reads as AI-written (also "очеловечь", "убери AI-стиль", "звучит как нейросеть"). Includes an advisory pattern scanner and a token-preservation check (Python 3, no dependencies). English, Russian, Ukrainian. Not for code review or fact-checking unless prose quality is part of the request.
 metadata:
-  version: "3.1.1"
+  version: "3.1.2"
 ---
 
 # Humanizer
@@ -174,7 +174,7 @@ examples; `references/examples.md` has complete worked rewrites.
 **Words**
 
 - Plain, specific words: use, help, check, fix, show, need, start, about, the table name,
-  the job name, the number. "The nightly load failed 9 times in October", not
+  the job name, the number. "The scheduled import failed 4 times in October", not
   "reliability challenges".
 - Default-banned words and phrases are in `references/patterns.md` (delve, leverage,
   robust, seamless, pivotal, crucial role, foster, streamline, ensure that, it's worth
@@ -199,7 +199,7 @@ examples; `references/examples.md` has complete worked rewrites.
 - Give bad news plainly with the cause: "The migration is two weeks late because the
   vendor API changed", not "We have encountered some challenges".
 - Make the ask explicit and answerable: "Can I take this in the current sprint? The
-  retention report would move to the next one."
+  activity report would move to the next one."
 - Don't ask the reader questions the author already knows the answer to, don't assign
   owners or deliverables unless the author has that authority and wants to, and don't add
   governance machinery (decision frameworks, RACI, timeboxed agendas) nobody asked for.

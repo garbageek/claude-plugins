@@ -65,5 +65,12 @@ Five narrowly scoped rules were retained from the repository's previous
 `skills/humanizer/SKILL.md`: neutral decision framing, current-behavior-first
 durable documentation, strict brevity when requested, condition-first answers, and
 flagging suspected factual errors instead of silently correcting them. The 3.1.0
-scanner, patch/rebuild logic, role checks, and default AI-pattern removal remain
-unchanged. These are editorial safeguards, not empirically validated improvements.
+scanner, patch/rebuild logic, role checks, and default AI-pattern removal were
+unchanged at that point. These are editorial safeguards, not empirically validated improvements.
+
+## 3.1.2 packaging and example refresh (2026-11-09)
+
+The scanner retains the two PR #22 fixes: decimal commas remain distinct in number
+normalization and accepted phrases can cross a soft line wrap without losing line
+numbers. Worked examples use invented generic systems and roles instead of a
+particular employer or production environment. The editorial workflow is unchanged.

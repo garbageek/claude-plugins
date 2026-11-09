@@ -19,7 +19,7 @@ The manager knows the pipeline. The engineer wants approval to spend a sprint on
 
 ## Purpose
 
-This document outlines the current state of the `events_raw` ingestion pipeline and
+This document outlines the current state of the `sample_feed` ingestion pipeline and
 provides a comprehensive overview of the key challenges, proposed solutions, and next steps.
 
 ## Executive Summary
@@ -32,14 +32,14 @@ dependable.
 
 ## Key Findings
 
-- **Failure rate:** The nightly job failed 9 times in October, highlighting the need for a more robust approach.
-- **Root cause:** Late files from the mobile client telemetry feed arrive after the 02:00 UTC cutoff.
-- **Impact:** Finance and LiveOps dashboards showed stale data, affecting decision-making across multiple teams.
+- **Failure rate:** The nightly job failed 4 times in October, highlighting the need for a more robust approach.
+- **Root cause:** Late files from the scheduled partner export arrive after the 02:00 UTC cutoff.
+- **Impact:** Operations and reporting dashboards showed stale data, affecting decision-making across multiple teams.
 
 ## Proposed Solution
 
-Rather than extending the cutoff, we should leverage Snowflake streams to process data
-incrementally. This approach serves as a foundation for a more scalable, resilient, and
+Rather than extending the cutoff, we should leverage change tracking to process incoming files
+without a cutoff. This approach serves as a foundation for a more scalable, resilient, and
 efficient pipeline. It's worth noting that this does not by itself guarantee zero
 failures, but it significantly reduces the risk.
 
@@ -48,7 +48,7 @@ The result? Fewer failures, fresher data, and happier stakeholders.
 ## Next Steps
 
 - Assign accountable owners for the migration.
-- Align with the LiveOps team on timelines.
+- Align with the reporting team on timelines.
 - Circle back in two weeks to review progress.
 
 Overall, this initiative represents a significant step forward in our data platform
@@ -62,53 +62,53 @@ the system, written as a formal report with invented management actions.
 
 ### Fact sheet (internal)
 
-- Finding: `events_raw` nightly load failed 9 times in October.
-- Finding: cause in all cases: mobile client telemetry files arrive after 02:00 UTC cutoff.
-- Finding: Finance and LiveOps dashboards showed stale data.
+- Finding: `sample_feed` nightly load failed 4 times in October.
+- Finding: cause in all cases: scheduled export files arrive after 02:00 UTC cutoff.
+- Finding: operations and reporting dashboards showed stale data.
 - Opinion: extending the cutoff is not the right fix.
-- Proposal: switch to Snowflake streams, process incrementally.
+- Proposal: switch to incremental change tracking, process incrementally.
 - Caveat: streams don't guarantee zero failures.
 - From the author's notes (not in the draft): the job runs on a partial set and someone
   reruns it by hand; late files drift later, median 01:40 in August and 02:25 in October;
   a prototype stream on the landing table exists on the dev account; a file that never
   arrives would still need an alert; about a week of work, mostly testing the merge logic
-  against the October backfill; the retention report would slip a sprint.
-- Ask: time to do it. The author confirmed that "assign owners" and "align with LiveOps"
-  were not his intent: he has no authority to assign owners and there is no LiveOps
+  against the October backfill; the activity report would slip a sprint.
+- Ask: time to do it. The author confirmed that "assign owners" and "align with reporting"
+  were not his intent: he has no authority to assign owners and there is no cross-team
   dependency. Dropped.
 
 ### After
 
 ```text
-events_raw nightly load: October failures
+sample_feed nightly load: October failures
 
-The nightly load of events_raw failed 9 times in October. Every time the cause was the
-same: telemetry files from the mobile client arrived after the 02:00 UTC cutoff, the job
-ran on a partial set, and the Finance and LiveOps dashboards showed the previous day's
+The nightly load of sample_feed failed 4 times in October. Every time the cause was the
+same: export files from the source system arrived after the 02:00 UTC cutoff, the job
+ran on a partial set, and the dashboards used by operations and reporting showed the previous day's
 numbers until someone reran it by hand.
 
 Moving the cutoff later would hide the problem for a while, but the late files have been
 drifting later since August (median arrival was 01:40 in August, 02:25 in October), so I
 don't think it buys us much.
 
-What I'd like to do instead is switch the load to a Snowflake stream on the landing table
+What I'd like to do instead is switch the load to a change stream on the landing table
 and process files as they arrive. I have a working prototype on the dev account. It won't
 remove every failure (if a file never arrives we still need an alert), but it removes the
-cutoff, which is where all 9 October failures came from.
+cutoff, which is where all 4 October failures came from.
 
 It's about a week of work for me, mostly testing the merge logic against the October
-backfill. Can I take it this sprint? If yes, the retention report would slip to the next
+backfill. Can I take it this sprint? If yes, the activity report would slip to the next
 one.
 ```
 
 What changed and why:
 
-- The news (9 failures, one cause) moved to the first sentence. Purpose section, summary,
+- The news (4 failures, one cause) moved to the first sentence. Purpose section, summary,
   and wrap-up are gone.
 - Bold-label bullets became two sentences, because the three "findings" are one causal
   chain, not a list.
 - "Crucial role", "robust", "scalable, resilient, and efficient", "happier stakeholders"
-  had no facts behind them. The fact that replaced them: all 9 failures came from the
+  had no facts behind them. The fact that replaced them: all 4 failures came from the
   cutoff the proposal removes.
 - "Does not by itself guarantee zero failures" became the concrete gap from the notes: a
   missing file still needs an alert. The limitation keeps its strength.
@@ -119,8 +119,8 @@ What changed and why:
 ### Before
 
 ```text
-Hi Mark! 👋 Quick update on the cost investigation — I've completed a deep dive into our
-Snowflake spend. The key finding: the BI_REPORTING warehouse accounts for 41% of credits,
+Hi Sam! 👋 Quick update on the cost investigation — I've completed a deep dive into our
+warehouse compute usage. The key finding: the REPORTING_WH warehouse accounts for 41% of credits,
 primarily driven by unoptimized dashboard queries. This isn't just a cost issue; it's a
 scalability concern. I'd recommend we prioritize a targeted optimization effort. Let me
 know if you'd like me to put together a more detailed proposal!
@@ -129,7 +129,7 @@ know if you'd like me to put together a more detailed proposal!
 ### After
 
 ```text
-Mark, BI_REPORTING is 41% of our Snowflake credits. Most of it is three dashboards that
+Sam, REPORTING_WH is 41% of our compute credits. Most of it is three dashboards that
 run full scans every 15 minutes. Besides the cost, it will become a scaling problem. I can
 move them to the hourly aggregate table, probably two days of work. OK to start on Monday,
 or is there something with higher priority? I can also write up a more detailed proposal
@@ -151,18 +151,18 @@ steady, practical, clearer.
 ### Before
 
 ```text
-The current retention report runs on a full daily rebuild. This takes about 40 minutes.
+The current activity report runs on a full daily rebuild. This takes about 40 minutes.
 It also uses a large warehouse. The cost is steady but higher than it needs to be.
 
-I propose an incremental model instead. The model would process only new sessions each
+I propose an incremental model instead. The model would process only new records each
 day. This keeps the logic the same. It changes how the data is loaded rather than what the
 report shows.
 
 This matters for two reasons. First, the report would be ready earlier in the morning.
 Second, the warehouse cost would drop. Both outcomes are practical and easy to measure.
 
-There are risks. Late events could be missed. A weekly full rebuild would cover this case.
-The October test does not establish that late events are rare. It only shows they were
+There are risks. Late records could be missed. A weekly full rebuild would cover this case.
+The October test does not establish that late records are rare. It only shows they were
 rare in October.
 
 The next step is a clearer comparison. I would run both versions in parallel for one week.
@@ -176,14 +176,14 @@ structure itself is the problem here: every thought is cut into separate short s
 ### After
 
 ```text
-The retention report is rebuilt from scratch every night. It takes about 40 minutes on a
-large warehouse and costs more than it needs to. If we loaded only the new sessions each
+The activity report is rebuilt from scratch every night. It takes about 40 minutes on a
+large warehouse and costs more than it needs to. If we loaded only the new records each
 day, the report logic and what it shows would stay the same, the report would be ready
 earlier in the morning, and the warehouse cost would drop.
 
-The risk is late events: a session that arrives after its day was processed would be
+The risk is late records: a record that arrives after its day was processed would be
 missed. A full rebuild once a week would pick those up. The October test showed late
-events were rare that month, which doesn't tell us whether they are rare in general.
+records were rare that month, which doesn't tell us whether they are rare in general.
 
 I'd like to run both versions side by side for a week and decide with real numbers.
 ```
@@ -199,7 +199,7 @@ I'd like to run both versions side by side for a week and decide with real numbe
 что проблема является не просто ошибкой расписания, а системным пробелом в обработке
 поздних данных.
 
-Внедрение Snowflake Streams играет ключевую роль в повышении надёжности, что позволяет
+Внедрение инкрементальной загрузки играет ключевую роль в повышении надёжности, что позволяет
 обеспечить актуальность дашбордов. Это не временное решение — это фундамент для
 масштабируемой архитектуры.
 
@@ -210,13 +210,13 @@ I'd like to run both versions side by side for a week and decide with real numbe
 ### After
 
 ```text
-Ночная загрузка events_raw в октябре падала 9 раз, и каждый раз по одной причине: файлы
-телеметрии приходили после 02:00 UTC. Дашборды Finance и LiveOps до ручного перезапуска
+Ночная загрузка sample_feed в октябре падала 4 раза, и каждый раз по одной причине: файлы
+источника приходили после 02:00 UTC. Отчёты по операциям и аналитике до ручного перезапуска
 показывали вчерашние цифры.
 
 Сдвигать отсечку не хочу: файлы приходят всё позже (медиана в августе 01:40, в октябре
-02:25). Предлагаю перевести загрузку на Snowflake stream, прототип на dev уже есть. Это
-примерно неделя работы. Берём в этот спринт? Тогда отчёт по удержанию уедет на следующий.
+02:25). Предлагаю перевести загрузку на поток изменений, прототип на dev уже есть. Это
+примерно неделя работы. Берём в этот спринт? Тогда отчёт по активности уедет на следующий.
 ```
 
 Notes: as in example 1, the numbers, times, and the sprint trade-off come from the

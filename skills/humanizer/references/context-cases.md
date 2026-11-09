@@ -7,17 +7,17 @@ and purpose; never import facts from an example.
 
 ## 1. An insider made to sound like an external auditor
 
-**Context:** An engineer has investigated slow reporting jobs and wants to discuss
+**Context:** An engineer has investigated slow build jobs and wants to discuss
 prioritizing the fix with a direct technical manager familiar with the system.
 There is no stated uncertainty about organizational ownership.
 
-**Mismatch:** "Who owns the physical organization of the reporting table?"
+**Mismatch:** "Who owns resource allocation for the build agents?"
 
-The sentence asks the manager to explain the organization instead of addressing the
-known technical problem. Replacing "physical organization" with "data layout" does
-not fix that change of role or the unsupported ownership question.
+The sentence asks the manager to explain an ownership question instead of addressing
+the known technical problem. Replacing "resource allocation" with "build configuration"
+does not fix that change of role or the unsupported ownership question.
 
-**Possible repair:** "The current layout is making these queries expensive. I want
+**Possible repair:** "The current build configuration is causing delays. I want
 to discuss whether to prioritize fixing it."
 
 **Boundary:** When responsibility really is unclear between two teams, a question
