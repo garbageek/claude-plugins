@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare iPhone Safari and Linux WebKit PNGs: strict raw diff or landmark alignment."""
+"""Compare supplied screenshots: strict raw diff or landmark alignment."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ import math
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageCms, ImageEnhance, ImageStat
+from PIL import Image, ImageChops, ImageCms, ImageStat
+
 
 def crop_spec(value: str) -> tuple[int, int, int, int]:
     try:
@@ -22,26 +23,33 @@ def crop_spec(value: str) -> tuple[int, int, int, int]:
         raise argparse.ArgumentTypeError("Expected nonnegative X,Y and positive WIDTH,HEIGHT") from None
 
 
-def load_image(path: Path, crop: tuple[int, int, int, int] | None) -> Image.Image:
+SRGB = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+
+
+def normalize_image(source: Image.Image) -> Image.Image:
+    """Convert to 8-bit sRGB and composite transparency over white."""
+    rgb = source.convert("RGB")
+    if source.info.get("icc_profile"):
+        try:
+            profile = ImageCms.ImageCmsProfile(io.BytesIO(source.info["icc_profile"]))
+            rgb = ImageCms.profileToProfile(rgb, profile, ImageCms.createProfile("sRGB"), outputMode="RGB")
+        except ImageCms.PyCMSError as exc:
+            raise ValueError(f"Invalid or unsupported ICC profile: {exc}") from exc
+    if "A" in source.getbands() or "transparency" in source.info:
+        rgb = Image.composite(rgb, Image.new("RGB", rgb.size, "white"), source.convert("RGBA").getchannel("A"))
+    rgb.info["icc_profile"] = SRGB
+    return rgb
+
+
+def load_image(path: Path, crop: tuple[int, int, int, int] | None = None) -> Image.Image:
     with Image.open(path) as source:
-        if "icc_profile" in source.info:
-            src_profile = ImageCms.ImageCmsProfile(io.BytesIO(source.info["icc_profile"]))
-            image = ImageCms.profileToProfile(source.convert("RGB"), src_profile,
-                                              ImageCms.createProfile("sRGB"), outputMode="RGB")
-        else:
-            image = source.convert("RGB")  # untagged source: assume sRGB
-        if crop:
-            x, y, width, height = crop
-            if x + width > image.width or y + height > image.height:
-                raise ValueError(f"Crop outside {path} ({image.width}x{image.height})")
-            image = image.crop((x, y, x + width, y + height))
-        return image
-
-
-DEFAULT_TOP = 135
-DEFAULT_BOTTOM = 2187
-TARGET_WIDTH = 1125
-TARGET_HEIGHT = 2436
+        image = normalize_image(source)
+    if crop:
+        x, y, width, height = crop
+        if min(x, y) < 0 or min(width, height) <= 0 or x + width > image.width or y + height > image.height:
+            raise ValueError(f"Crop outside {path} ({image.width}x{image.height})")
+        image = image.crop((x, y, x + width, y + height))
+    return image
 
 
 def report_path(directory: Path, name: str) -> Path:
@@ -50,7 +58,8 @@ def report_path(directory: Path, name: str) -> Path:
 
 
 def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path,
-               top: int, bottom: int, threshold: int, min_inliers: int) -> dict:
+                    top: int | None, bottom: int | None, threshold: int,
+                    min_inliers: int, dpr: float | None = None) -> dict:
     import cv2
     import numpy as np
 
@@ -58,12 +67,14 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
     candidate = np.asarray(load_image(candidate_path, None))
     h, w = real.shape[:2]
     hc, wc = candidate.shape[:2]
-    if w != TARGET_WIDTH or h != TARGET_HEIGHT:
-        raise ValueError(f"Reference geometry {w}x{h}: expected {TARGET_WIDTH}x{TARGET_HEIGHT}; adjust calibration source")
     if wc != w:
-        raise ValueError(f"Candidate width {wc}px != reference {w}px; capture at 375 CSS px and DPR 3 (do NOT resize)")
+        raise ValueError(f"Candidate width {wc}px != reference {w}px; match CSS width and DPR (do NOT resize)")
+    top = 0 if top is None else top
+    bottom = h if bottom is None else bottom
     if not 0 <= top < bottom <= h:
-        raise ValueError("Comparison ROI must satisfy 0 <= top < bottom <= screenshot height")
+        raise ValueError(f"Comparison ROI must satisfy 0 <= top < bottom <= reference height ({h})")
+    if dpr is not None and not 0 < dpr <= 10:
+        raise ValueError("DPR must be within (0, 10]")
 
     reference_gray = cv2.cvtColor(real, cv2.COLOR_RGB2GRAY)
     actual_gray = cv2.cvtColor(candidate, cv2.COLOR_RGB2GRAY)
@@ -79,7 +90,7 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
     good = [pair[0] for pair in matches if len(pair) == 2 and pair[0].distance < 0.74 * pair[1].distance]
     if len(good) < min_inliers:
         raise ValueError(f"Only {len(good)} reliable feature matches; need {min_inliers}. "
-                         "Check URL, target, selected method, quantity, viewport and scroll position")
+                         "Check URL, page state, viewport and scroll position")
 
     actual_points = np.float32([candidate_keypoints[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
     reference_points = np.float32([reference_keypoints[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
@@ -100,13 +111,13 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
     if not (0.98 <= scale <= 1.02 and abs(angle) <= 1):
         raise ValueError(f"Scale/rotation mismatch: scale={scale:.4f}, rotation={angle:.3f} deg; "
                          "not normalizing away a real geometry difference. Verify DPR, CSS width and app zoom")
-    transformed = cv2.transform(actual_points[inliers], estimated)
-    median_residual_px = float(np.median(np.linalg.norm(transformed - reference_points[inliers], axis=2)))
+    offsets = (reference_points[inliers] - actual_points[inliers]).reshape(-1, 2)
+    shift_x, shift_y = (int(round(value)) for value in np.median(offsets, axis=0))
+    median_residual_px = float(np.median(np.linalg.norm(offsets - [shift_x, shift_y], axis=1)))
     if median_residual_px > 3.0:
         raise ValueError(f"Too much landmark misalignment ({median_residual_px:.2f}px): compare the same app state")
 
     # Integer shift only. Do NOT silently scale/rotate actual, which would erase layout differences.
-    shift_x, shift_y = round(tx), round(ty)
     translate = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
     aligned = cv2.warpAffine(candidate, translate, (w, h), flags=cv2.INTER_NEAREST,
                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
@@ -114,8 +125,9 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
                            flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     valid = (valid > 0) & (roi > 0)
     pixel_count = int(valid.sum())
-    if pixel_count < 200000:
-        raise ValueError(f"Overlap too small ({pixel_count}px); cannot compare")
+    min_overlap = max(1000, round(0.15 * w * (bottom - top)))
+    if pixel_count < min_overlap:
+        raise ValueError(f"Overlap too small ({pixel_count}px, minimum {min_overlap}px); cannot compare")
 
     abs_diff = cv2.absdiff(real, aligned)
     max_diff = abs_diff.max(axis=2)
@@ -138,6 +150,7 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
     Image.fromarray(error_mask).save(report_path(output_dir, "error-mask.png"))
     Image.fromarray(valid_mask).save(report_path(output_dir, "valid-mask.png"))
     report = {
+        "colorSpace": "8-bit sRGB; untagged input assumed sRGB; alpha on white",
         "reference": str(reference_path),
         "candidate": str(candidate_path),
         "reference_size_px": [w, h],
@@ -150,28 +163,25 @@ def compare_aligned(reference_path: Path, candidate_path: Path, output_dir: Path
             "estimated_rotation_degrees_diagnostic_only": round(angle, 4),
             "estimated_translation_screen_px": [round(tx, 3), round(ty, 3)],
             "used_translation_screen_px": [shift_x, shift_y],
-            "used_translation_css_px_at_dpr3": [round(shift_x / 3, 3), round(shift_y / 3, 3)],
+            "dpr_supplied_for_css_translation": dpr,
+            "used_translation_css_px": ([round(shift_x / dpr, 3), round(shift_y / dpr, 3)]
+                                         if dpr is not None else None),
             "median_registration_residual_px": round(median_residual_px, 3),
         },
         "diff": {
             "overlap_pixels": pixel_count,
+            "reference_roi_coverage_percent": round(100 * pixel_count / (w * (bottom - top)), 4),
+            "candidate_coverage_percent": round(100 * pixel_count / (wc * hc), 4),
             "changed_pixels_above_threshold": int(diff_mask.sum()),
             "threshold_max_rgb": threshold,
             "changed_percent": round(changed_percent, 4),
             "mean_absolute_rgb_difference": round(rgb_mad, 4),
         },
-        "warnings": [
-            "Alignment compensates global translation; evaluate the translation separately as a possible layout defect.",
-            "Raw RGB errors are not a perceptual similarity metric and do not prove Safari compatibility.",
-            "The reference ROI excludes obvious Safari chrome; it is NOT a measurement of DOM or visual viewport.",
-            "Compare equivalent state: same route, quantity, method, theme, scroll position and loaded assets.",
-        ],
     }
     report_path(output_dir, "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     return report
-
 
 
 def compare_raw(reference_path: Path, candidate_path: Path, output_dir: Path,
@@ -181,6 +191,7 @@ def compare_raw(reference_path: Path, candidate_path: Path, output_dir: Path,
     """Raw RGB difference on strictly matching geometry (unless resizing is explicit)."""
     reference = load_image(reference_path, reference_crop)
     candidate = load_image(candidate_path, candidate_crop)
+    resampled = candidate.size != reference.size and resize_candidate
     if candidate.size != reference.size:
         if not resize_candidate:
             raise ValueError(f'Sizes differ: reference={reference.size}, candidate={candidate.size}; '
@@ -200,12 +211,12 @@ def compare_raw(reference_path: Path, candidate_path: Path, output_dir: Path,
         'changedPixels': changed, 'totalPixels': total,
         'changedPercent': round(100 * changed / total, 4),
         'meanAbsoluteRgbDifference': round(sum(mean) / 3, 4),
-        'resampledCandidate': resize_candidate,
+        'resampledCandidate': resampled,
+        'colorSpace': '8-bit sRGB; untagged input assumed sRGB; alpha on white',
         'referenceCrop': reference_crop, 'candidateCrop': candidate_crop,
-        'note': 'Raw pixel statistics, not a perceptual similarity score or Safari fidelity benchmark.',
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    ImageEnhance.Contrast(difference).enhance(3).save(output_dir / 'diff-3x.png')
+    difference.point(lambda value: min(255, value * 3)).save(output_dir / 'diff-3x.png')
     mask.save(output_dir / 'error-mask.png')
     Image.blend(reference, candidate, 0.5).save(output_dir / 'overlay.png')
     (output_dir / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
@@ -229,9 +240,10 @@ def main() -> int:
             cmd.add_argument('--resize-candidate', action='store_true',
                              help='Explicit resizing may conceal real geometry differences')
         else:
-            cmd.add_argument('--roi-top', type=int, default=DEFAULT_TOP)
-            cmd.add_argument('--roi-bottom', type=int, default=DEFAULT_BOTTOM)
+            cmd.add_argument('--roi-top', type=int, help='Measured top edge in reference image pixels (default 0)')
+            cmd.add_argument('--roi-bottom', type=int, help='Measured exclusive bottom edge (default image height)')
             cmd.add_argument('--min-inliers', type=int, default=10)
+            cmd.add_argument('--dpr', type=float, help='Screenshot pixels per CSS px for reporting translation')
     args = parser.parse_args()
     if not 0 <= args.threshold <= 255:
         parser.error('--threshold must be 0..255')
@@ -244,10 +256,12 @@ def main() -> int:
                                  args.resize_candidate, args.threshold)
         else:
             report = compare_aligned(args.reference, args.candidate, args.output_dir,
-                                     args.roi_top, args.roi_bottom, args.threshold, args.min_inliers)
+                                     args.roi_top, args.roi_bottom, args.threshold,
+                                     args.min_inliers, args.dpr)
     except (ValueError, OSError, ImportError) as exc:
         parser.exit(1, f'ERROR: {exc}\n')
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(json.dumps({"report": str(args.output_dir / "report.json"),
+                      "changedPercent": report.get("changedPercent", report.get("diff", {}).get("changed_percent"))}))
     return 0
 
 
