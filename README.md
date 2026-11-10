@@ -28,6 +28,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Prose editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied text and requested writing style |
 | Codex on Ubuntu | [`codex-ubuntu-server`](skills/codex-ubuntu-server/SKILL.md) | Access to the selected Ubuntu host |
 | Session continuity | [`uncompromising-handover`](skills/uncompromising-handover/SKILL.md) | An accessible checkpoint destination |
+| Agent Skill authoring | [`create-skill`](skills/create-skill/SKILL.md) | Python 3 and PyYAML for validation and packaging; authenticated Claude or Codex CLI only for requested evaluations |
 | Plugin authoring | [`create-plugin`](skills/create-plugin/SKILL.md), [`inspect-plugin`](skills/inspect-plugin/SKILL.md), [`update-plugin`](skills/update-plugin/SKILL.md) | Local files; connected Plugin Creator only for hosted operations |
 | Plugin installation and management | [`install-agent-plugins`](skills/install-agent-plugins/SKILL.md) | Access to the selected host plugin manager/CLI; no Plugin Creator backend required |
 
