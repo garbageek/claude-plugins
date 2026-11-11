@@ -11,9 +11,9 @@ import os
 import queue
 import subprocess
 import sys
-import time
 import tempfile
 import threading
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -21,10 +21,9 @@ from scripts.utils import parse_skill_md
 
 
 def find_project_root() -> Path:
-    """Find the project root by walking up from cwd looking for .claude/.
+    """Return the calling project for legacy runner compatibility.
 
-    Mimics how Claude Code discovers its project root, so the command file
-    we create ends up where claude -p will look for it.
+    Trigger subprocesses use their own temporary projects and never modify it.
     """
     current = Path.cwd()
     for parent in [current, *current.parents]:
@@ -171,8 +170,12 @@ def run_single_query(
                 if _is_trigger_event(event, command_name, tool_blocks):
                     return True
 
-            if process.wait() != 0:
-                raise RuntimeError(f"claude -p exited with status {process.returncode}")
+            try:
+                returncode = process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired as exc:
+                raise TimeoutError(f"claude -p exceeded {timeout}s") from exc
+            if returncode != 0:
+                raise RuntimeError(f"claude -p exited with status {returncode}")
             return False
         finally:
             if process.poll() is None:
@@ -180,6 +183,7 @@ def run_single_query(
             process.wait()
             process.stdout.close()
             reader.join(timeout=1)
+
 
 def run_eval(
     eval_set: list[dict],
@@ -192,10 +196,21 @@ def run_eval(
     trigger_threshold: float = 0.5,
     model: str | None = None,
 ) -> dict:
-    """Run the full eval set and return results."""
     """Run all eval cases, preserving order and distinguishing failures."""
     if num_workers < 1 or runs_per_query < 1 or timeout < 1:
         raise ValueError("workers, runs per query, and timeout must be positive")
+    if not 0 < trigger_threshold <= 1:
+        raise ValueError("trigger threshold must be in (0, 1]")
+    if not eval_set:
+        raise ValueError("eval set must contain at least one query")
+    for index, item in enumerate(eval_set):
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("query"), str)
+            or not item["query"].strip()
+            or not isinstance(item.get("should_trigger"), bool)
+        ):
+            raise ValueError(f"invalid eval case at index {index}: expected query and should_trigger")
 
     observations: list[list[bool]] = [[] for _ in eval_set]
     errors = []
