@@ -5,6 +5,8 @@ description: Create, rewrite, debug, adapt, and evaluate prompts for language mo
 
 # Design Prompts
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Produce prompts that are clear, compact, testable, and appropriate for the target tool.
 
 ## Workflow

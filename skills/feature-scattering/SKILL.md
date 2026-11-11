@@ -5,6 +5,8 @@ description: Investigate feature locality, shotgun-change costs, divergent chang
 
 # Feature Scattering
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Find concrete change-locality problems, not every feature mentioned in several files. Use the [deep-review finding contract](../deep-review/SKILL.md) and [public audit contract](../../docs/audit/CONTRACT.md). This is a source-analysis helper, not another lifecycle.
 
 ## Inputs and invocation

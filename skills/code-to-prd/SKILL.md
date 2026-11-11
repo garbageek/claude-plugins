@@ -5,6 +5,8 @@ description: Reverse-engineer a frontend, backend, or mixed codebase into an evi
 
 # Code to PRD
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Reverse-engineer an existing frontend, backend, or mixed codebase into an evidence-backed Product Requirements Document.
 
 ## Required Reference Routing

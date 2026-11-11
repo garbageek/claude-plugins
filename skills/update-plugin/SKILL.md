@@ -5,6 +5,8 @@ description: Use when changing plugin source or publishing a revised Claude Code
 
 # Update plugin
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Treat the existing plugin as the source of truth. Make the requested changes and
 necessary consistency updates, preserving unrelated behavior. Read the shared
 [platform contracts](../../references/plugin-authoring.md) before changing host

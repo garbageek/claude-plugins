@@ -5,6 +5,8 @@ description: Design software architecture SPECs, product briefs and lightweight 
 
 # System Architect
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Turn the user's actual goal into a coherent, implementable design or the authorized implementation. Keep the existing product, scope, decisions, and working behavior intact. Prefer the simplest design that satisfies the requirements; lean means complete without unnecessary machinery, not automatically MVP.
 
 ## Instruction and evidence contract

@@ -5,6 +5,8 @@ description: Use when the user requests a new Claude Code or Codex plugin, a reu
 
 # Create plugin
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Create a focused plugin that solves the user's actual workflow. Do not start from
 a generic feature checklist or add components merely because plugins support them.
 Read the shared [platform contracts](../../references/plugin-authoring.md) before

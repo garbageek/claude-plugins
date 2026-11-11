@@ -5,6 +5,8 @@ description: Review scoped repository instructions against actual code, commands
 
 # Review Repository Instructions
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Read [discovery and retention](../../references/repo-instructions.md). Review
 is **read-only by default**, including no report file creation. It does not run
 services or modify host settings merely to verify a documentation claim.

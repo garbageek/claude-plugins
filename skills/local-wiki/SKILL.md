@@ -5,6 +5,8 @@ description: Build or update a source-backed local repository wiki, validate its
 
 # Local Wiki
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 ## Scope and Modes
 
 Choose **inspect/validate**, **author/update Markdown**, **export Markdown**, or

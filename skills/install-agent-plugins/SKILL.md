@@ -5,6 +5,8 @@ description: "Use when installing, enabling, disabling, upgrading, removing, or 
 
 # Plugins in Claude Code, Claude app, and OpenAI Codex
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Claude and Codex both use plugins and marketplaces, but their mechanisms differ.
 Never assume a Claude command works in Codex or vice versa. Check the selected
 host's current official documentation and installed CLI help for version-sensitive

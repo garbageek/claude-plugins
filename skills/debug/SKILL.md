@@ -5,6 +5,8 @@ description: Investigate a bug, failing command, build or CI failure, crash, wro
 
 # Debug
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Find why the failure happens before changing anything that is meant to fix it. A change made before the cause is established is a guess; a guess that happens to silence the symptom is not a fix.
 
 ## Scope and authority
