@@ -5,6 +5,8 @@ description: Research, design, and ship repository-specific GitHub Copilot Code 
 
 # Copilot Review Customizer
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Create the smallest repository-native customization that makes Copilot Code Review more precise for the target project. Optimize defect findings for precision over recall: a clean review is better than an unsupported finding, but a statically provable defect is still a finding.
 
 Two sources of truth, never mixed:

@@ -5,6 +5,8 @@ description: Install, authenticate, update, diagnose, or recover Codex CLI on Ub
 
 # Codex on Ubuntu Server
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Complete the requested lifecycle task on the identified Ubuntu host as its normal Unix user. Prefer standalone installation for new hosts; preserve an existing installation method and app-server owner unless migration is requested.
 
 For installing, upgrading, disabling or removing plugins **inside** Codex, use

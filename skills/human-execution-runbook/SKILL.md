@@ -5,6 +5,8 @@ description: Draft, update from execution evidence, or resume a sequential runbo
 
 # Human Execution Runbook
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Turn the actual task into the shortest executable human-owned procedure. Resolve agent-discoverable facts and prepare derived commands/messages before handing work to the human. This skill drafts and maintains a document; it does not execute or authorize the human's actions.
 
 ## Modes

@@ -5,6 +5,8 @@ description: Inspect existing audit health, summary, and resolution or verificat
 
 # Inspect Audit Status
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Read the [audit invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation).
 Resolve the installed plugin and target project separately. Use the bundled
 Python CLI after setting `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` to the

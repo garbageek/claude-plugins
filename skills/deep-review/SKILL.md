@@ -5,6 +5,8 @@ description: Review code, diffs, regressions, and implementation claims using tr
 
 # Deep Review
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Investigate actual behavior, not how suspicious the code looks. Prefer a few reproducible findings over a long list of plausible concerns. This is an investigation entry point, **not a fifth audit lifecycle role**.
 
 ## Scope and authority

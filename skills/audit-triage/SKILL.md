@@ -6,6 +6,8 @@ tags: [audit, triage, priority, dependency, roadmap]
 
 # Audit Triage
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Read the [runtime invocation contract](../../docs/audit/CONTRACT.md#1-canonical-runtime-invocation) first. Use the bundled Python CLI after resolving `AUDIT_PLUGIN_ROOT` and `AUDIT_PROJECT_DIR` as described there. A separately configured `audit_*` MCP server is an optional equivalent with an explicit absolute `root`.
 
 Purpose: plan coherent fixes across tickets, not just assign statuses. Resolve

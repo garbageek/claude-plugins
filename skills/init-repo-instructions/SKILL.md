@@ -5,6 +5,8 @@ description: Create repository-specific agent instructions for the requested Cla
 
 # Initialize Repository Instructions
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Read [discovery and retention](../../references/repo-instructions.md) before
 choosing a target file. It owns the shared evidence rubric and host-specific
 loading rules; do not invent a second precedence policy here.

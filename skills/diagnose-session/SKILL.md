@@ -5,6 +5,8 @@ description: Investigate what went wrong in a recorded Claude Code or Codex agen
 
 # Diagnose Session
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Report what happened in an agent session, with evidence. Every finding cites `path:line` in a transcript; every number comes from the transcript or from a command run on it, never from memory or a price list.
 
 ## Scope and authority
