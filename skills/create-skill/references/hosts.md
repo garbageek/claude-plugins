@@ -34,6 +34,9 @@ The original scripts below depend specifically on Claude Code's CLI and message
 format. They are preserved to maintain functionality and source compatibility:
 
 - `scripts/run_eval.py`: tests whether Claude uses a synthetic command skill.
+  Each query runs in its own temporary project, without inheriting repository
+  commands or skill definitions. CLI errors and timeouts abort the evaluation
+  instead of being scored as negative triggers.
 - `scripts/run_loop.py`: evaluates and iteratively improves descriptions using
   the Claude CLI.
 - `scripts/improve_description.py`: proposes descriptions by calling Claude.

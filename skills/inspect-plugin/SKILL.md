@@ -5,6 +5,8 @@ description: Use for read-only inspection or per-skill quality assessment of a C
 
 # Inspect plugin
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Inspect first, change nothing unless the user separately asks for an edit. Read the
 shared [platform contracts](../../references/plugin-authoring.md) for host-specific
 manifest authority and compatibility boundaries.

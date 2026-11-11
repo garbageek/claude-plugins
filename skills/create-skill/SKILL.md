@@ -5,6 +5,8 @@ description: Create, edit, evaluate, or optimize a reusable Agent Skill (SKILL.m
 
 # Create Skill
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Create or improve **Agent Skills** as independent, reusable workflows. The user
 selects the task and delivery; this skill owns the `SKILL.md`, supporting files,
 and optional evidence-driven iteration. Do not turn skill-only requests into a new

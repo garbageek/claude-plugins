@@ -8,6 +8,7 @@ External CLIs are invoked only when the user explicitly runs this helper.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -117,7 +118,15 @@ def copy_skill(skill_path: Path, dst: Path, host: str, name: str) -> None:
     shutil.copytree(skill_path, target, ignore=shutil.ignore_patterns("evals", "__pycache__", ".git", ".DS_Store", "*.pyc"))
 
 
-def save_outputs(src: Path, dst: Path) -> None:
+def file_digest(path: Path) -> bytes:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.digest()
+
+
+def save_outputs(src: Path, dst: Path, original_inputs: dict[Path, bytes]) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     # Do not copy host setup, caches, or transcripts containing credentials;
     # outputs are files the agent created in the isolated project directory.
@@ -127,6 +136,8 @@ def save_outputs(src: Path, dst: Path) -> None:
         if path.stat().st_size > 20_000_000:
             continue
         relative = path.relative_to(src)
+        if relative in original_inputs and file_digest(path) == original_inputs[relative]:
+            continue  # Unchanged case inputs are not agent-generated outputs.
         output_file = dst / "artifacts" / relative
         output_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, output_file)
@@ -163,11 +174,16 @@ def evaluate(args: argparse.Namespace) -> int:
             with tempfile.TemporaryDirectory(prefix=f"skill-eval-{case_name}-") as tmp:
                 execution_dir = Path(tmp)
                 copy_inputs(case_dir, execution_dir)
+                original_inputs = {
+                    path.relative_to(execution_dir): file_digest(path)
+                    for path in execution_dir.rglob("*")
+                    if path.is_file()
+                }
                 if configuration == "with_skill":
                     copy_skill(skill_path, execution_dir, args.host, name)
                 code, answer, error, tokens, duration = run_cli(args.host, prompt, execution_dir, args.timeout, args.model)
                 outputs = result_dir / "outputs"
-                save_outputs(execution_dir, outputs)
+                save_outputs(execution_dir, outputs, original_inputs)
                 (outputs / "response.md").write_text(answer or "(No final response)", encoding="utf-8")
                 (result_dir / "execution.json").write_text(json.dumps({
                     "host": args.host, "exit_code": code, "error": error,

@@ -7,6 +7,8 @@ metadata:
 
 # Humanizer
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 The user sends these documents to colleagues and management as his own work. Those
 readers have seen a lot of ChatGPT output and recognize it from a few lines. The job is
 text this author would plausibly write to this reader, with every fact, number, and

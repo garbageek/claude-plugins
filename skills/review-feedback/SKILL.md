@@ -5,6 +5,8 @@ description: Use when assessing or addressing specific pull request review comme
 
 # Review Feedback
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Evaluate concrete review feedback against the current implementation. Do not accept
 a reviewer suggestion merely because it appears in a PR, and do not turn the
 request into a new whole-repository audit or an audit ticket lifecycle.

@@ -2,17 +2,18 @@
 """CLAUDE CODE ONLY: run trigger evaluation for a skill description.
 
 Tests whether a skill's description causes Claude to trigger (read the skill)
-for a set of queries. Outputs results as JSON.
+for a set of queries in isolated projects. Outputs results as JSON.
 """
 
 import argparse
 import json
 import os
-import select
+import queue
 import subprocess
 import sys
 import time
-import uuid
+import tempfile
+import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -32,6 +33,73 @@ def find_project_root() -> Path:
     return current
 
 
+def _matches_tool_use(tool_name: str, tool_input: dict, command_name: str) -> bool:
+    """Recognize only an actual invocation of the synthetic command."""
+    if not isinstance(tool_input, dict):
+        return False
+    if tool_name == "Skill":
+        value = tool_input.get("skill")
+        return isinstance(value, str) and (
+            value == command_name or value.endswith(f":{command_name}")
+        )
+    if tool_name == "Read":
+        value = tool_input.get("file_path")
+        return isinstance(value, str) and (
+            value.replace("\\", "/").rsplit("/", 1)[-1] == f"{command_name}.md"
+        )
+    return False
+
+
+def _is_trigger_event(
+    event: dict, command_name: str, tool_blocks: dict[int, dict]
+) -> bool:
+    """Inspect full assistant messages and incremental stream-json tool calls."""
+    if not isinstance(event, dict):
+        return False
+    if event.get("type") == "assistant":
+        for item in (event.get("message") or {}).get("content", []):
+            if item.get("type") == "tool_use" and _matches_tool_use(
+                item.get("name", ""), item.get("input") or {}, command_name
+            ):
+                return True
+        return False
+
+    if event.get("type") != "stream_event":
+        return False
+
+    stream_event = event.get("event") or {}
+    event_type = stream_event.get("type")
+    index = stream_event.get("index")
+
+    if event_type == "content_block_start":
+        block = stream_event.get("content_block") or {}
+        if block.get("type") == "tool_use":
+            tool_blocks[index] = {"name": block.get("name", ""), "json": ""}
+            return _matches_tool_use(block.get("name", ""), block.get("input") or {}, command_name)
+
+    elif event_type == "content_block_delta" and index in tool_blocks:
+        delta = stream_event.get("delta") or {}
+        if delta.get("type") == "input_json_delta":
+            state = tool_blocks[index]
+            state["json"] += delta.get("partial_json", "")
+            try:
+                tool_input = json.loads(state["json"])
+            except json.JSONDecodeError:
+                return False
+            return _matches_tool_use(state["name"], tool_input, command_name)
+
+    elif event_type == "content_block_stop":
+        state = tool_blocks.pop(index, None)
+        if state:
+            try:
+                tool_input = json.loads(state["json"])
+            except json.JSONDecodeError:
+                return False
+            return _matches_tool_use(state["name"], tool_input, command_name)
+
+    return False
+
+
 def run_single_query(
     query: str,
     skill_name: str,
@@ -40,146 +108,78 @@ def run_single_query(
     project_root: str,
     model: str | None = None,
 ) -> bool:
-    """Run a single query and return whether the skill was triggered.
+    """Measure whether Claude invokes the command in an isolated project.
 
-    Creates a command file in .claude/commands/ so it appears in Claude's
-    available_skills list, then runs `claude -p` with the raw query.
-    Uses --include-partial-messages to detect triggering early from
-    stream events (content_block_start) rather than waiting for the
-    full assistant message, which only arrives after tool execution.
+    Each invocation gets its own .claude/commands directory, so parallel
+    workers cannot accidentally select one another's synthetic skills.
     """
-    unique_id = uuid.uuid4().hex[:8]
-    clean_name = f"{skill_name}-skill-{unique_id}"
-    project_commands_dir = Path(project_root) / ".claude" / "commands"
-    command_file = project_commands_dir / f"{clean_name}.md"
-
-    try:
-        project_commands_dir.mkdir(parents=True, exist_ok=True)
-        # Use YAML block scalar to avoid breaking on quotes in description
+    # Keep the argument for existing callers, but do not inherit their
+    # project's commands or local skill definitions during a trigger eval.
+    _ = project_root
+    command_name = f"{skill_name}-skill"
+    with tempfile.TemporaryDirectory(prefix="create-skill-trigger-") as workdir:
+        commands_dir = Path(workdir) / ".claude" / "commands"
+        commands_dir.mkdir(parents=True)
         indented_desc = "\n  ".join(skill_description.split("\n"))
-        command_content = (
-            f"---\n"
-            f"description: |\n"
-            f"  {indented_desc}\n"
-            f"---\n\n"
-            f"# {skill_name}\n\n"
-            f"This skill handles: {skill_description}\n"
+        (commands_dir / f"{command_name}.md").write_text(
+            f"---\ndescription: |\n  {indented_desc}\n---\n\n"
+            f"# {skill_name}\n\nThis skill handles: {skill_description}\n",
+            encoding="utf-8",
         )
-        command_file.write_text(command_content)
 
         cmd = [
-            "claude",
-            "-p", query,
+            "claude", "-p", query,
             "--output-format", "stream-json",
-            "--verbose",
-            "--include-partial-messages",
+            "--verbose", "--include-partial-messages",
         ]
         if model:
             cmd.extend(["--model", model])
-
-        # Remove CLAUDECODE env var to allow nesting claude -p inside a
-        # Claude Code session. The guard is for interactive terminal conflicts;
-        # programmatic subprocess usage is safe.
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-
+        env = {key: value for key, value in os.environ.items() if key != "CLAUDECODE"}
         process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            cwd=project_root,
-            env=env,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            cwd=workdir, env=env, text=True, encoding="utf-8", errors="replace",
         )
 
-        triggered = False
-        start_time = time.time()
-        buffer = ""
-        # Track state for stream event detection
-        pending_tool_name = None
-        accumulated_json = ""
+        lines: queue.Queue[str | None] = queue.Queue()
 
+        def collect_stdout() -> None:
+            try:
+                for line in process.stdout:
+                    lines.put(line)
+            finally:
+                lines.put(None)
+
+        reader = threading.Thread(target=collect_stdout, daemon=True)
+        reader.start()
+        tool_blocks: dict[int, dict] = {}
+        deadline = time.monotonic() + timeout
         try:
-            while time.time() - start_time < timeout:
-                if process.poll() is not None:
-                    remaining = process.stdout.read()
-                    if remaining:
-                        buffer += remaining.decode("utf-8", errors="replace")
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"claude -p exceeded {timeout}s")
+                try:
+                    line = lines.get(timeout=remaining)
+                except queue.Empty:
+                    raise TimeoutError(f"claude -p exceeded {timeout}s") from None
+                if line is None:
                     break
-
-                ready, _, _ = select.select([process.stdout], [], [], 1.0)
-                if not ready:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
                     continue
+                if _is_trigger_event(event, command_name, tool_blocks):
+                    return True
 
-                chunk = os.read(process.stdout.fileno(), 8192)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    # Early detection via stream events
-                    if event.get("type") == "stream_event":
-                        se = event.get("event", {})
-                        se_type = se.get("type", "")
-
-                        if se_type == "content_block_start":
-                            cb = se.get("content_block", {})
-                            if cb.get("type") == "tool_use":
-                                tool_name = cb.get("name", "")
-                                if tool_name in ("Skill", "Read"):
-                                    pending_tool_name = tool_name
-                                    accumulated_json = ""
-                                else:
-                                    return False
-
-                        elif se_type == "content_block_delta" and pending_tool_name:
-                            delta = se.get("delta", {})
-                            if delta.get("type") == "input_json_delta":
-                                accumulated_json += delta.get("partial_json", "")
-                                if clean_name in accumulated_json:
-                                    return True
-
-                        elif se_type in ("content_block_stop", "message_stop"):
-                            if pending_tool_name:
-                                return clean_name in accumulated_json
-                            if se_type == "message_stop":
-                                return False
-
-                    # Fallback: full assistant message
-                    elif event.get("type") == "assistant":
-                        message = event.get("message", {})
-                        for content_item in message.get("content", []):
-                            if content_item.get("type") != "tool_use":
-                                continue
-                            tool_name = content_item.get("name", "")
-                            tool_input = content_item.get("input", {})
-                            if tool_name == "Skill" and clean_name in tool_input.get("skill", ""):
-                                triggered = True
-                            elif tool_name == "Read" and clean_name in tool_input.get("file_path", ""):
-                                triggered = True
-                            return triggered
-
-                    elif event.get("type") == "result":
-                        return triggered
+            if process.wait() != 0:
+                raise RuntimeError(f"claude -p exited with status {process.returncode}")
+            return False
         finally:
-            # Clean up process on any exit path (return, exception, timeout)
             if process.poll() is None:
                 process.kill()
-                process.wait()
-
-        return triggered
-    finally:
-        if command_file.exists():
-            command_file.unlink()
-
+            process.wait()
+            process.stdout.close()
+            reader.join(timeout=1)
 
 def run_eval(
     eval_set: list[dict],
@@ -193,68 +193,57 @@ def run_eval(
     model: str | None = None,
 ) -> dict:
     """Run the full eval set and return results."""
-    results = []
+    """Run all eval cases, preserving order and distinguishing failures."""
+    if num_workers < 1 or runs_per_query < 1 or timeout < 1:
+        raise ValueError("workers, runs per query, and timeout must be positive")
 
+    observations: list[list[bool]] = [[] for _ in eval_set]
+    errors = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        future_to_info = {}
-        for item in eval_set:
-            for run_idx in range(runs_per_query):
-                future = executor.submit(
-                    run_single_query,
-                    item["query"],
-                    skill_name,
-                    description,
-                    timeout,
-                    str(project_root),
-                    model,
-                )
-                future_to_info[future] = (item, run_idx)
-
-        query_triggers: dict[str, list[bool]] = {}
-        query_items: dict[str, dict] = {}
-        for future in as_completed(future_to_info):
-            item, _ = future_to_info[future]
-            query = item["query"]
-            query_items[query] = item
-            if query not in query_triggers:
-                query_triggers[query] = []
+        jobs = {
+            executor.submit(
+                run_single_query, item["query"], skill_name, description,
+                timeout, str(project_root), model,
+            ): index
+            for index, item in enumerate(eval_set)
+            for _ in range(runs_per_query)
+        }
+        for job in as_completed(jobs):
+            index = jobs[job]
             try:
-                query_triggers[query].append(future.result())
-            except Exception as e:
-                print(f"Warning: query failed: {e}", file=sys.stderr)
-                query_triggers[query].append(False)
+                observations[index].append(job.result())
+            except Exception as exc:
+                errors.append(f"{eval_set[index]['query'][:80]!r}: {exc}")
+    if errors:
+        raise RuntimeError(
+            "Trigger evaluation failed; no scores were produced:\n"
+            + "\n".join(errors)
+        )
 
-    for query, triggers in query_triggers.items():
-        item = query_items[query]
-        trigger_rate = sum(triggers) / len(triggers)
-        should_trigger = item["should_trigger"]
-        if should_trigger:
-            did_pass = trigger_rate >= trigger_threshold
-        else:
-            did_pass = trigger_rate < trigger_threshold
+    results = []
+    for item, outcomes in zip(eval_set, observations):
+        rate = sum(outcomes) / len(outcomes)
+        expected = item["should_trigger"]
         results.append({
-            "query": query,
-            "should_trigger": should_trigger,
-            "trigger_rate": trigger_rate,
-            "triggers": sum(triggers),
-            "runs": len(triggers),
-            "pass": did_pass,
+            "query": item["query"],
+            "should_trigger": expected,
+            "trigger_rate": rate,
+            "triggers": sum(outcomes),
+            "runs": len(outcomes),
+            "pass": rate >= trigger_threshold if expected else rate < trigger_threshold,
         })
 
-    passed = sum(1 for r in results if r["pass"])
-    total = len(results)
-
+    passed = sum(item["pass"] for item in results)
     return {
         "skill_name": skill_name,
         "description": description,
         "results": results,
         "summary": {
-            "total": total,
+            "total": len(results),
             "passed": passed,
-            "failed": total - passed,
+            "failed": len(results) - passed,
         },
     }
-
 
 def main():
     parser = argparse.ArgumentParser(description="Run trigger evaluation for a skill description")

@@ -5,6 +5,8 @@ description: Assess and recover an existing project after suspect changes caused
 
 # Project Recovery
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 Restore the required behavior with the smallest evidence-backed change, not a new architecture or a reflexive return to the oldest version.
 
 Use the [architect's instruction, evidence, authorization, and verification contract](../architect/SKILL.md). Read the [recovery protocol](references/recovery-protocol.md) for this route. It refines recovery, not the authority of the main architect skill. Examples and diagnostic patterns do not create new permissions.

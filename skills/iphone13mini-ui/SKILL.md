@@ -5,6 +5,8 @@ description: "Build or fix web UI for iPhone 13 mini Safari: 375px layouts, over
 
 # iPhone 13 mini UI
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 ## Workflow
 
 I reproduce the requested route and interaction using the project's existing dev

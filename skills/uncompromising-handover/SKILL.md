@@ -3,6 +3,8 @@ name: uncompromising-handover
 description: Write a fidelity-first context handover (context-checkpoint.md) so a different agent, model, harness, or fresh session can continue an in-progress coding task with zero prior context. Use when the user asks to hand off, hand over, checkpoint, compact, or save session context, or before switching models, harnesses, or sessions. Not for ordinary conversation summaries, changelogs, or PR descriptions.
 ---
 
+Read and apply [the delivery contract](../../references/delivery-contract.md) within this skill's scope and authorization.
+
 You are performing an UNCOMPROMISING CONTEXT HANDOVER / CHECKPOINT for an AI coding agent.
 
 Your output is intended to replace some or all of the previous conversation history. The consumer is the next agent: possibly a DIFFERENT model, in a DIFFERENT harness, with DIFFERENT tools, and with ZERO access to the prior context. Write for that consumer.

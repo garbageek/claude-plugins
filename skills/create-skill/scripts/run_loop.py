@@ -24,19 +24,24 @@ from scripts.utils import parse_skill_md
 
 def split_eval_set(eval_set: list[dict], holdout: float, seed: int = 42) -> tuple[list[dict], list[dict]]:
     """Split eval set into train and test sets, stratified by should_trigger."""
-    random.seed(seed)
+    if not 0 < holdout < 1:
+        raise ValueError("holdout must be between 0 and 1 (exclusive)")
+    rng = random.Random(seed)
 
     # Separate by should_trigger
     trigger = [e for e in eval_set if e["should_trigger"]]
     no_trigger = [e for e in eval_set if not e["should_trigger"]]
 
     # Shuffle each group
-    random.shuffle(trigger)
-    random.shuffle(no_trigger)
+    rng.shuffle(trigger)
+    rng.shuffle(no_trigger)
 
     # Calculate split points
-    n_trigger_test = max(1, int(len(trigger) * holdout))
-    n_no_trigger_test = max(1, int(len(no_trigger) * holdout))
+    # Leave at least one training example for each nonempty class.
+    n_trigger_test = min(len(trigger) - 1, max(1, round(len(trigger) * holdout))) if len(trigger) > 1 else 0
+    n_no_trigger_test = min(len(no_trigger) - 1, max(1, round(len(no_trigger) * holdout))) if len(no_trigger) > 1 else 0
+    if n_trigger_test + n_no_trigger_test == 0:
+        raise ValueError("Holdout needs at least two examples of one trigger polarity")
 
     # Split
     test_set = trigger[:n_trigger_test] + no_trigger[:n_no_trigger_test]
@@ -258,6 +263,10 @@ def main():
     parser.add_argument("--report", default="auto", help="Generate HTML report at this path (default: 'auto' for temp file, 'none' to disable)")
     parser.add_argument("--results-dir", default=None, help="Save all outputs (results.json, report.html, log.txt) to a timestamped subdirectory here")
     args = parser.parse_args()
+    if not 0 <= args.holdout < 1:
+        parser.error("--holdout must be in [0, 1)")
+    if min(args.num_workers, args.timeout, args.max_iterations, args.runs_per_query) < 1:
+        parser.error("--num-workers, --timeout, --max-iterations and --runs-per-query must be positive")
 
     eval_set = json.loads(Path(args.eval_set).read_text())
     skill_path = Path(args.skill_path)
