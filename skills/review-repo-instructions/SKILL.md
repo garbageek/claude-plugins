@@ -1,6 +1,6 @@
 ---
 name: review-repo-instructions
-description: Review scoped repository instructions against actual code, commands, and Claude/Codex loading behavior. Identify drift, conflicts, noise, and useful retained rules; return source-backed minimal changes without editing unless explicitly requested.
+description: Review an existing agent instruction file (AGENTS.md, CLAUDE.md, .claude/rules) against the actual code, commands, and Claude/Codex loading behavior. Use when asked to check, audit, or review such a file, or to find out why an agent does not follow it. Reports drift, conflicts, noise, and rules worth keeping, with minimal source-backed changes; edits only when the request or standing project instructions authorize it. For a requested rewrite, or a new rule after an agent failure, use design-prompts.
 ---
 
 # Review Repository Instructions
@@ -10,6 +10,11 @@ Read and apply [the delivery contract](../../references/delivery-contract.md) wi
 Read [discovery and retention](../../references/repo-instructions.md). Review
 is **read-only by default**, including no report file creation. It does not run
 services or modify host settings merely to verify a documentation claim.
+
+The read-only default yields to the request and to the project's or user's standing instructions. If
+either says that a check includes fixing confirmed problems, finish the review,
+then apply the corrections for **confirmed drift/conflict** under Authorized Edits
+in the same turn. Editorial suggestions and unresolved behavior stay proposals.
 
 ## Investigation
 
@@ -39,12 +44,15 @@ model effectiveness.
 
 ## Authorized Edits
 
-When the request includes applying improvements, edit only the named scope and
+When edits are authorized, edit only the named scope and
 preserve useful content/organization. No automatic deletion, import-chain
 rewrite, policy hierarchy invention, or new instruction-file family. Read back
 the result and compare against both source evidence and the original meaning.
 An edit does not prove the host loaded it; record any unverified loading behavior
 without claiming success. For missing-file creation, use [init](../init-repo-instructions/SKILL.md).
+When the user explicitly asks to rewrite, compress, or restructure an instruction
+file, or to add a rule after an agent failure, use the standing-instructions mode
+of [design-prompts](../design-prompts/SKILL.md).
 
 For repository-specific **GitHub Copilot Code Review customization**, use
 [copilot-review-customizer](../copilot-review-customizer/SKILL.md). That workflow

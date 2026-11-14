@@ -80,7 +80,13 @@ evidence**, **propose removal**, or **unresolved**. Preserve its useful section 
 meaning. Never remove a domain constraint solely because its rationale is not
 immediately apparent. Unsupported new guidance is omitted, not filled with a
 placeholder section. A short instruction file may be complete; a long one may
-contain necessary scoped detail. No fixed line count determines quality.
+contain necessary scoped detail. No fixed line count determines quality; this is
+this plugin's editorial position, not the hosts'. Claude Code's documentation
+recommends under 200 lines per `CLAUDE.md`, says longer files reduce adherence,
+and warns at startup above its recommended length; Codex stops adding files at
+its combined byte budget. Report a file that exceeds a host recommendation or
+budget as a finding with the source, and propose what to move or merge; do not
+delete rules to reach a number.
 
 | Dimension | Practical question |
 |---|---|
@@ -107,12 +113,20 @@ absence of a generic warning does not justify adding one to every repository.
 A review returns findings in chat by default; no report file, scoring registry,
 readiness grade, CI change, or document pack. Initialization creates only the
 requested host/scope file when creation is authorized. Existing instruction edits
-must be requested, not implied by an editorial score or a request to inspect.
+must be authorized by the request or by the project's or user's standing
+instructions (for example, a rule that a requested check includes fixing confirmed
+problems); an editorial score never authorizes them.
 Use a minimal patch, preserve unrelated content, read back the result, and inspect
 the diff for semantic loss, duplicate imports/rules, wrong scope, and invented
 commands. Keep uncertain operational claims out of new rules; explain important
 unknowns in the response. Never claim that writing a file proved host loading or
 that prompt text is executable enforcement.
+
+The minimal-patch and preserve-organization rules protect a file from an unrequested
+rewrite. When the user explicitly asks to rewrite, compress, or restructure a file,
+they are replaced by the inventory, collision, and coverage steps of
+[standing-instructions mode](../skills/design-prompts/references/standing-instructions.md);
+the readback and no-invented-commands rules above still apply.
 
 Example acceptance cases: AGENTS-only repository needs no automatic Claude bridge;
 coexisting Claude/AGENTS files require host-specific loading diagnosis rather
