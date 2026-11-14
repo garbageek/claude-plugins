@@ -1,6 +1,6 @@
 ---
 name: design-prompts
-description: Create, rewrite, debug, adapt, and evaluate prompts for language models and AI agents. Use when the user asks for a copy-ready prompt, prompt optimization, a system or developer prompt, structured-output instructions, few-shot examples, prompt migration between tools or models, prompt diagnostics, an evaluation rubric, or a prompt test set. Do not use for producing the final content itself; this skill produces the prompt that generates it.
+description: Create, rewrite, debug, adapt, and evaluate prompts and standing instructions for language models and AI agents. Use when the user asks for a copy-ready prompt, prompt optimization, a system or developer prompt, structured-output instructions, few-shot examples, prompt migration between tools or models, prompt diagnostics, an evaluation rubric, or a prompt test set. Also use when asked to improve, compress, rephrase, or restructure agent instructions such as AGENTS.md, CLAUDE.md, or a rules file, or to add a rule to them so a failure does not recur (also "улучши инструкцию", "перепиши промпт", "добавь в инструкции"). Do not use for producing the final content itself, or for auditing repository instructions against code and host loading (review-repo-instructions).
 ---
 
 # Design Prompts
@@ -20,11 +20,12 @@ Produce prompts that are clear, compact, testable, and appropriate for the targe
 
 ## Route By Task
 
-Select the requested mode: **create**, **rewrite**, **diagnose**, **adapt**, **evaluate**, or explicitly **source-backed**. A diagnosis may explain the fault before a corrected prompt; an evaluation request follows the requested evaluation scope without pretending it was executed.
+Select the requested mode: **create**, **rewrite**, **diagnose**, **adapt**, **evaluate**, **standing-instructions**, or explicitly **source-backed**. A diagnosis may explain the fault before a corrected prompt; an evaluation request follows the requested evaluation scope without pretending it was executed.
 
 - For a reusable task prompt, few-shot examples, structured outputs, prompt debugging or repair, or prompt migration between tools or models, use [Prompt Patterns](#prompt-patterns).
 - For system prompts, agent instructions, tool use, or long-running work, use [System And Agent Prompts](#system-and-agent-prompts).
 - For test sets, rubrics, comparison, regression testing, or result reporting, use [Prompt Evaluation](#prompt-evaluation).
+- For text an agent loads on every run (`AGENTS.md`, `CLAUDE.md`, a system prompt, a rules file), whether adding a rule after a failure or rewriting the whole file, load [Standing-instructions mode](references/standing-instructions.md) before drafting.
 - For a prompt derived from implemented service/workflow logic, load [Source-backed mode](references/source-backed.md). Do not replace executable gates with prose enforcement.
 
 Apply only the relevant section.
@@ -52,6 +53,8 @@ For a prompt-writing or rewriting request, return:
 3. Up to three brief notes only when they explain assumptions, required variables, or usage that is not obvious.
 
 Do not force commentary before or after the prompt when the user asks for prompt-only output.
+
+When the target is a file such as `AGENTS.md`, deliver the complete file in its native format instead of a fenced block.
 
 ## Final Check
 
