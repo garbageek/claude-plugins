@@ -10,6 +10,7 @@ Exit codes: 0 = no mechanical issue; 1 = review differences; 2 = invalid input.
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 from collections import Counter
 import difflib
 import json
@@ -20,6 +21,7 @@ from typing import Any, Iterable
 
 MAX_BYTES = 8 * 1024 * 1024
 TokenCounts = Counter[tuple[str, str]]
+TokenOffsets = dict[tuple[str, str], int]
 Range = tuple[int, int]  # inclusive, one-based original lines
 COMMON_CAPS = {"OK", "FYI", "ASAP", "AM", "PM", "TLDR", "PS"}
 
@@ -107,7 +109,7 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
                               r"[a-z]+(?:[A-Z][A-Za-z0-9]*)+|"
                               r"[A-Z][a-z]+[A-Z][A-Za-z0-9]*|"
                               r"[A-Z]{2,}[A-Z0-9_-]*|--[A-Za-z][\w-]*)(?!\w)")),
-    ("number", re.compile(r"(?<![\w.])[+\-−]?\d+(?:[.,]\d+|[ \u00a0\u202f]\d{3})*"
+    ("number", re.compile(r"(?<![\w.])[+\-−]?(?:\d+(?:[.,]\d+|[ \u00a0\u202f]\d{3})*|\.\d+)"
                           r"(?:[eE][+\-]?\d+)?"
                           r"(?:[ \t\u00a0\u202f]?(?:%|°[CFK]|µs|μs|ms|ns|s|sec|min|h|hrs?|days?|"
                           r"minutes?|hours?|bytes?|KiB|MiB|GiB|KB|MB|GB|TB|"
@@ -116,11 +118,15 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-def protected_counts(text: str, literals: Iterable[str] = ()) -> TokenCounts:
+def protected_counts(text: str, literals: Iterable[str] = (),
+                     *, first_offsets: TokenOffsets | None = None) -> TokenCounts:
     counts: TokenCounts = Counter()
     masked = list(text)
     for start, end, kind in block_spans(text):
-        counts[(kind, text[start:end])] += 1
+        key = (kind, text[start:end])
+        counts[key] += 1
+        if first_offsets is not None:
+            first_offsets.setdefault(key, start)
         # Keep character offsets and line boundaries stable for all recognizers.
         for i in range(start, end):
             if masked[i] not in "\r\n":
@@ -134,13 +140,19 @@ def protected_counts(text: str, literals: Iterable[str] = ()) -> TokenCounts:
             # Keep URL candidates exact. Terminal punctuation can be part of
             # a query/path; guessing it away could hide a meaningful change.
             if value.strip():
-                counts[(kind, value)] += 1
+                key = (kind, value)
+                counts[key] += 1
+                if first_offsets is not None:
+                    first_offsets.setdefault(key, match.start())
     for literal in set(literals):
         if not literal:
             raise ValueError("Protected literals must not be empty")
         occurrences = text.count(literal)
         if occurrences:
-            counts[("explicit_literal", literal)] = occurrences
+            key = ("explicit_literal", literal)
+            counts[key] = occurrences
+            if first_offsets is not None:
+                first_offsets[key] = text.find(literal)
     return counts
 
 
@@ -185,9 +197,11 @@ def newline_types(text: str) -> list[str]:
     return sorted({names[m.group()] for m in re.finditer(r"\r\n|\r|\n", text)})
 
 
-def first_line(text: str, literal: str) -> int | None:
-    offset = text.find(literal)
-    return None if offset < 0 else len(re.findall(r"\r\n|\r|\n", text[:offset])) + 1
+def line_starts(text: str) -> list[int]:
+    """Index the beginning of every line once for efficient offset lookup."""
+    starts = [0]
+    starts.extend(match.end() for match in re.finditer(r"\r\n|\r|\n", text))
+    return starts
 
 
 def compare(source: str, draft: str, *, literals: Iterable[str] = (),
@@ -196,15 +210,25 @@ def compare(source: str, draft: str, *, literals: Iterable[str] = (),
     for literal in literals:
         if not literal or literal not in source:
             raise ValueError(f"Protected literal is empty or absent from source: {literal!r}")
-    old, new = protected_counts(source, literals), protected_counts(draft, literals)
+    old_offsets: TokenOffsets = {}
+    new_offsets: TokenOffsets = {}
+    old = protected_counts(source, literals, first_offsets=old_offsets)
+    new = protected_counts(draft, literals, first_offsets=new_offsets)
+    changes = [(kind, value, old[(kind, value)], new[(kind, value)])
+               for kind, value in sorted(old.keys() | new.keys())
+               if old[(kind, value)] != new[(kind, value)]]
     issues: list[dict[str, Any]] = []
-    for kind, value in sorted(old.keys() | new.keys()):
-        a, b = old[(kind, value)], new[(kind, value)]
-        if a != b:
+    if changes:
+        old_lines, new_lines = line_starts(source), line_starts(draft)
+        for kind, value, a, b in changes:
+            key = (kind, value)
+            source_offset, draft_offset = old_offsets.get(key), new_offsets.get(key)
             issues.append({"kind": "protected_content", "token_type": kind, "value": value,
                            "source_count": a, "draft_count": b,
-                           "source_first_line": first_line(source, value),
-                           "draft_first_line": first_line(draft, value)})
+                           "source_first_line": (bisect_right(old_lines, source_offset)
+                                                 if source_offset is not None else None),
+                           "draft_first_line": (bisect_right(new_lines, draft_offset)
+                                                if draft_offset is not None else None)})
     if newline_types(source) != newline_types(draft):
         issues.append({"kind": "line_endings", "source": newline_types(source),
                        "draft": newline_types(draft)})
