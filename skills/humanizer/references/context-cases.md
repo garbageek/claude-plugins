@@ -5,10 +5,21 @@ user's earlier research and the v2 draft of this skill. They are generic editori
 illustrations, not measured results or approved wording. Keep the actual user's facts
 and purpose; never import facts from an example.
 
+## Navigation
+
+- [Role and shared context](#1-an-insider-made-to-sound-like-an-external-auditor): cases 1, 3, 7.
+- [Artifact and structure](#2-personal-talking-points-turned-into-a-facilitated-session): cases 2, 4.
+- [Commitments, stance, and evidence](#5-a-proposal-promoted-into-a-promise): cases 5, 6, 8.
+- [Feedback and overcorrection](#9-corrective-feedback-treated-as-a-formatting-issue): cases 9, 10.
+
+Use [context and exceptions](context-and-exceptions.md) for the decision rules and
+[voice calibration](voice-profile.md) when actual writing samples are available.
+
 ## 1. An insider made to sound like an external auditor
 
-**Context:** An engineer has investigated slow build jobs and wants to discuss
-prioritizing the fix with a direct technical manager familiar with the system.
+**Context:** An engineer has established that the current build configuration causes
+slow build jobs and wants to discuss prioritizing the fix with a direct technical
+manager familiar with the system.
 There is no stated uncertainty about organizational ownership.
 
 **Mismatch:** "Who owns resource allocation for the build agents?"
@@ -69,8 +80,9 @@ statement, executive summary, decision framework, and an authorization disclaime
 unrequested administrative sections; do not replace each with a friendlier synonym.
 
 **Boundary:** Required metadata in formal minutes, regulated records, or a supplied
-template is not decoration. Preserve it. Blank fields are appropriate only when a
-fillable record is requested, not as compensation for missing facts.
+template is not decoration. Preserve it. Intentional blanks in fillable records,
+explicitly unfinished drafts, or redactions can remain. Missing facts must be flagged,
+not replaced with plausible values.
 
 ## 5. A proposal promoted into a promise
 
@@ -91,7 +103,7 @@ answer the specific question. The author wants to keep that criticism.
 **Incorrect rewrite:** "The response provides useful confirmation and a foundation
 for further collaboration."
 
-**Possible repair:** "The response mostly repeats what we had already sent and still
+**Possible repair:** "The response repeats what we had already sent and still
 doesn't answer the question."
 
 Do not erase the criticism to improve diplomacy or add insults to demonstrate

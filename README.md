@@ -25,7 +25,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Codebase documentation | [`code-to-prd`](skills/code-to-prd/SKILL.md), [`local-wiki`](skills/local-wiki/SKILL.md) | Python; optional HTML renderer dependencies |
 | Repository instructions | [`init-repo-instructions`](skills/init-repo-instructions/SKILL.md), [`review-repo-instructions`](skills/review-repo-instructions/SKILL.md), [`copilot-review-customizer`](skills/copilot-review-customizer/SKILL.md) | Actual repository and current host/GitHub documentation |
 | Mobile web UI | [`iphone13mini-ui`](skills/iphone13mini-ui/SKILL.md) | Python 3.10+ with Playwright; WebKit or Chromium browser binary; USB iPhone with pymobiledevice3 for real-device checks |
-| Prose editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied text and requested writing style |
+| Prose drafting and editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied facts or text; optional author samples; Python 3.10+ for advisory helpers |
 | Codex on Ubuntu | [`codex-ubuntu-server`](skills/codex-ubuntu-server/SKILL.md) | Access to the selected Ubuntu host |
 | Session continuity | [`uncompromising-handover`](skills/uncompromising-handover/SKILL.md) | An accessible checkpoint destination |
 | Agent Skill authoring | [`create-skill`](skills/create-skill/SKILL.md) | Python 3 and PyYAML for validation and packaging; authenticated Claude or Codex CLI only for requested evaluations |
@@ -282,7 +282,7 @@ Installing the toolkit supplies the **customizer**, not a review skill already i
 /artur-plugins:humanizer
 ```
 
-[humanizer](skills/humanizer/SKILL.md) drafts, rewrites, and reviews work prose in the author's own voice, including status updates, proposals, technical documentation, PR descriptions, messages, and meeting notes. It preserves meaning, numbers, identifiers, limitations, the sender's authority, and commitments; it provides an advisory AI-pattern scanner and token-preservation check. The skill can activate for drafting in the user's name without an explicit request to humanize. Detect mode does not rewrite, and already-clear text may remain unchanged.
+[humanizer](skills/humanizer/SKILL.md) drafts, rewrites, and reviews prose in the author's voice, including status updates, proposals, technical documentation, PR descriptions, messages, and meeting notes. It preserves claims, limitations, authority, commitments, and technical content. Its English/Russian/Ukrainian scanner reports candidates for contextual review; headings, dashes, passives, and uncertainty are not automatic defects. With `--source`, the scanner also checks protected-content occurrence counts, code, quotations, math, URLs, line endings, and optional original-line edit boundaries. Voice calibration uses comparable author samples without importing their facts. The skill activates for drafting in the user's name without an explicit humanize request; Detect mode does not rewrite, and clear text may remain unchanged. Helpers require Python 3.10+ and the standard library, with a manual editorial fallback.
 
 ### Codex on Ubuntu
 
