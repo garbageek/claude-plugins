@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
-"""Scan prose for common AI-writing tells and check that concrete tokens survived a rewrite.
+"""Find prose-editing candidates and check preservation against a source.
 
 Usage:
   python3 ai_tells.py DRAFT [--source ORIGINAL] [--lang auto|en|ru|uk]
                             [--allow PHRASE ...] [--allow-category CAT ...]
+                            [--allow-lines START:END ...] [--protect LITERAL ...]
                             [--json] [--fail-on high|medium]
   cat draft.md | python3 ai_tells.py -
 
-Standard library only (Python 3.8+). The scanner finds surface patterns and is advisory:
-it does not judge authorship, a clean scan does not prove the text reads well, and its
-suggestion line never overrides the editor's judgment of role, genre and structure.
+Standard library only (Python 3.10+). Hits are candidates, not demonstrated defects or
+authorship evidence. Their severity measures heuristic signal strength, not harm.
+Review the context before editing; a clean scan cannot establish meaning or voice.
 Accept a legitimate phrase with --allow "primary key"; see references/patterns.md.
+With --source, the bundled preservation checker compares exact recognized-token
+counts, protected blocks, line endings, and optional original-line boundaries.
+Style allowlists never suppress preservation checks. Neither checker proves meaning.
+Inputs are UTF-8 text, at most 8 MiB each. No file is modified.
+
+Exit 0: advisory scan completed (findings may remain). Exit 1: --fail-on was requested
+and its style threshold or a source-comparison warning matched. Exit 2: invalid input.
 """
 
 from __future__ import annotations
@@ -21,6 +29,21 @@ import re
 import statistics
 import sys
 from dataclasses import dataclass, asdict
+from pathlib import Path
+
+if __name__ == "__main__":
+    # Running the checker must not create a cache in the installed plugin.
+    sys.dont_write_bytecode = True
+
+from preservation_check import (
+    MAX_BYTES,
+    PATTERNS as PRESERVATION_PATTERNS,
+    block_spans,
+    compare,
+    decode_utf8,
+    parse_ranges,
+    read_utf8,
+)
 
 SEVERITY_ORDER = {"high": 3, "medium": 2, "low": 1}
 
@@ -38,29 +61,46 @@ class Hit:
 # Text preparation
 # --------------------------------------------------------------------------------------
 
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
-INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+INLINE_CODE_RE = dict(PRESERVATION_PATTERNS)["inline_code"]
 URL_RE = re.compile(r"https?://\S+")
 
 
 def prepare_lines(text: str):
     """Return list of (lineno, raw, scan_text, kind).
 
-    kind: 'code' (inside fence), 'quote', 'heading', 'bullet', 'table', 'blank', 'prose'.
-    scan_text has inline code and URLs blanked so they are never flagged.
+    kind: 'code' (fence or frontmatter), 'quote', 'heading', 'bullet', 'table',
+    'blank', 'prose'. Preserve line positions while masking inline code and URLs.
     """
     out = []
-    in_fence = False
-    for i, raw in enumerate(text.splitlines(), start=1):
-        if FENCE_RE.match(raw):
-            in_fence = not in_fence
-            out.append((i, raw, "", "code"))
-            continue
-        if in_fence:
-            out.append((i, raw, "", "code"))
+    protected = block_spans(text)
+    spans = iter(protected)
+    span = next(spans, None)
+    offset = 0
+    # Mask inline code separately between protected blocks. Delimiters inside
+    # a fence, or on opposite sides of it, must not hide unrelated prose.
+    masked_parts = []
+    cursor = 0
+    for start, end, _kind in protected:
+        masked_parts.append(INLINE_CODE_RE.sub(
+            lambda m: re.sub(r"[^\r\n]", " ", m.group()), text[cursor:start]))
+        masked_parts.append(re.sub(r"[^\r\n]", " ", text[start:end]))
+        cursor = end
+    masked_parts.append(INLINE_CODE_RE.sub(
+        lambda m: re.sub(r"[^\r\n]", " ", m.group()), text[cursor:]))
+    masked = "".join(masked_parts)
+    masked = URL_RE.sub(lambda m: " " * len(m.group()), masked)
+    for i, line in enumerate(text.splitlines(keepends=True), start=1):
+        raw = line.rstrip("\r\n")
+        start, offset = offset, offset + len(line)
+        scan = masked[start:offset]
+        while span is not None and start >= span[1]:
+            span = next(spans, None)
+        if span is not None and span[0] <= start < span[1]:
+            kind = "quote" if span[2] == "blockquote_line" else "code"
+            out.append((i, raw, "", kind))
             continue
         s = raw.strip()
-        scan = URL_RE.sub(" ", INLINE_CODE_RE.sub(" ", raw)).replace("’", "'").replace("‘", "'")
+        scan = scan.rstrip("\r\n").replace("’", "'").replace("‘", "'")
         if not s:
             kind = "blank"
         elif s.startswith(">"):
@@ -132,19 +172,19 @@ EN_PATTERNS = [
     (r",\s+(ensuring|highlighting|underscoring|emphasizing|reflecting|showcasing|fostering|enabling|empowering|reinforcing|solidifying|cementing|paving|contributing to|positioning|driving|unlocking|demonstrating)\b", "medium", "participle-tail", "Trailing -ing clause that comments instead of informing [WP]"),
 
     # Copula avoidance.
-    (r"\b(serves|stands|functions|acts) as (a|an|the|our)\b", "medium", "copula-avoidance", "Use is/are [WP]"),
-    (r"\b(boasts|boasting)\b", "medium", "copula-avoidance", "Use has [WP]"),
+    (r"\b(serves|stands|functions|acts) as (a|an|the|our)\b", "medium", "copula-avoidance", "Check whether is/are preserves the intended relationship [WP]"),
+    (r"\b(boasts|boasting)\b", "medium", "copula-avoidance", "Check for unsupported promotion; preserve the substantive claim [WP]"),
 
     # Negative parallelism and corrective framing.
     (r"(\bnot|n't) (just|only|merely|simply) [^.;:!?\n]{1,80}?[,;]?\s*(but|it'?s|it is|they'?re|we'?re|this is)\b", "medium", "negative-parallelism", "'Not just X but Y' [WP]"),
     (r"\b(isn'?t|is not|wasn'?t|was not|aren'?t|are not) (just |only |really |simply )?about [^.;!?\n]{1,80}?[,;:—–-]\s*(it'?s|it is|they'?re|this is) (about )?", "medium", "negative-parallelism", "'This isn't about X, it's about Y' [WP]"),
     (r"(^|[.!?]\s+)(it'?s|this is|that'?s) not [^.;!?\n]{1,50}?[,;—–]\s*(it'?s|this is|that'?s) ", "medium", "negative-parallelism", "'It's not X, it's Y' [WP]"),
     (r"\bless about [^.;!?\n]{1,60}? (and|but) more about\b", "medium", "negative-parallelism", "Contrast framing [D]"),
-    (r"\brather than\b", "low", "negative-parallelism", "'Y rather than X'; fine once, a tell when repeated [WP]"),
-    (r"\b(does not|doesn'?t|did not|didn'?t) (by itself |on its own |necessarily )?(establish|prove|guarantee|imply)\b", "medium", "corrective-disclaimer", "Mid-2026 corrective disclaimer [WP]"),
-    (r"\bshould (be (treated|read|understood|seen|viewed) as|not be confused with)\b", "medium", "corrective-disclaimer", "Corrective framing [WP]"),
-    (r"\b(based on|given) (the )?(available|provided|current) (information|data|evidence|sources)\b", "medium", "corrective-disclaimer", "Hedging disclaimer about sources [WP]"),
-    (r"\bnot (widely|publicly|extensively) (available|documented|disclosed)\b", "medium", "corrective-disclaimer", "Hedging disclaimer [WP]"),
+    (r"\brather than\b", "low", "negative-parallelism", "'Y rather than X'; check whether a real contrast is being made [WP]"),
+    (r"\b(does not|doesn'?t|did not|didn'?t) (by itself |on its own |necessarily )?(establish|prove|guarantee|imply)\b", "medium", "corrective-disclaimer", "Possible evidence boundary; preserve uncertainty and causal limits [WP]"),
+    (r"\bshould (be (treated|read|understood|seen|viewed) as|not be confused with)\b", "medium", "corrective-disclaimer", "Check whether the distinction carries necessary meaning [WP]"),
+    (r"\b(based on|given) (the )?(available|provided|current) (information|data|evidence|sources)\b", "medium", "corrective-disclaimer", "Check source scope; preserve evidence-bearing qualifications [WP]"),
+    (r"\bnot (widely|publicly|extensively) (available|documented|disclosed)\b", "medium", "corrective-disclaimer", "Check whether limited availability is the substantive claim [WP]"),
 
     # Reveal colons and rhetorical questions.
     (r"(^|[.!?]\s+)(the|here'?s the|and the) (result|answer|catch|fix|problem|kicker|twist|bottom line|takeaway|short version|reality|upshot|good news|bad news|key finding|main finding|key takeaway|key insight|big picture)\s*[:?]", "medium", "reveal-framing", "Setup-reveal construction [D]"),
@@ -167,8 +207,8 @@ EN_PATTERNS = [
     (r"\b(nail down|lean (in|into|toward)|weigh in|dial in|lands? (in|on|with))\b", "low", "idiom", "Native idiom; check it fits the author [M]"),
 
     # Hedge stacking.
-    (r"\b(may|might|could) (potentially|possibly|perhaps)\b", "medium", "hedge-stacking", "Two hedges where one will do [M]"),
-    (r"\b(potentially|possibly) (could|may|might)\b", "medium", "hedge-stacking", "Two hedges where one will do [M]"),
+    (r"\b(may|might|could) (potentially|possibly|perhaps)\b", "medium", "hedge-stacking", "Possible stacked softeners; retain the original degree of uncertainty [M]"),
+    (r"\b(potentially|possibly) (could|may|might)\b", "medium", "hedge-stacking", "Possible stacked softeners; retain the original degree of uncertainty [M]"),
 
     # Procedural self-report.
     (r"\bwhile (preserving|maintaining|retaining|keeping|ensuring)\b", "medium", "procedural-self-report", "AI change-summary formula [WP]"),
@@ -215,7 +255,7 @@ RU_PATTERNS = [
     (r"\b(важно|стоит|следует|необходимо) (отметить|подчеркнуть|учитывать|понимать)\b", "medium", "signposting", "Дидактическая вставка [D]"),
     (r"(^|[.!?]\s+)(в заключение|подводя итог|таким образом|в целом|итак|резюмируя),", "medium", "wrap-up", "Итоговая формула [D]"),
     (r"\bв (современном|сегодняшнем) (мире|контексте)\b|\bна сегодняшний день\b", "medium", "puffery", "Пустая рамка [D]"),
-    (r"\b(данный|данная|данное|данные) (документ|подход|процесс|решение|отчёт|отчет|раздел|вопрос)\b", "medium", "officialese", "Канцелярит: «данный» → «этот» [D]"),
+    (r"\b(данный|данная|данное|данные) (документ|подход|процесс|решение|отчёт|отчет|раздел|вопрос)\b", "medium", "officialese", "Возможный канцелярит; проверить регистр и значение [D]"),
     (r"\b(является|являются|являлся|являлась)\b", "low", "copula-avoidance", "«является» вместо тире или «это» [D]"),
     (r"\b(осуществля\w*|в рамках|в целях|с целью обеспечения|на постоянной основе)\b", "low", "officialese", "Канцелярит [D]"),
     (r"\b(обеспечива\w+|позволяет|позволит)\b", "low", "participle-tail", "Комментарий о пользе вместо факта; проверить кластер [D]"),
@@ -233,7 +273,7 @@ UK_PATTERNS = [
     (r"\b(важливо|варто|слід|необхідно) (зазначити|відзначити|підкреслити|враховувати|розуміти)\b", "medium", "signposting", "Дидактична вставка [D]"),
     (r"(^|[.!?]\s+)(на завершення|підсумовуючи|отже|загалом|таким чином),", "medium", "wrap-up", "Підсумкова формула [D]"),
     (r"\bу (сучасному|сьогоднішньому) (світі|контексті)\b|\bна сьогоднішній день\b", "medium", "puffery", "Порожня рамка [D]"),
-    (r"\b(даний|дана|дане|дані) (документ|підхід|процес|рішення|звіт|розділ|питання)\b", "medium", "officialese", "Канцелярит: «даний» → «цей» [D]"),
+    (r"\b(даний|дана|дане|дані) (документ|підхід|процес|рішення|звіт|розділ|питання)\b", "medium", "officialese", "Можливий канцелярит; перевірити регістр і значення [D]"),
     (r"\b(здійсню\w*|у рамках|в рамках|з метою забезпечення|на постійній основі)\b", "low", "officialese", "Канцелярит [D]"),
     (r",\s+(що дозволяє|забезпечуючи|підкреслюючи|демонструючи|сприяючи|дозволяючи)\b", "medium", "participle-tail", "Хвіст-коментар [D]"),
     (r"\b(давайте (розглянемо|розберемо|подивимось)|нижче (наведено|представлено))\b", "medium", "signposting", "Екскурсоводська рамка [D]"),
@@ -313,7 +353,7 @@ def scan_vocab(lines, total_words, hits, summary):
                 weak_found.setdefault(lw, []).append(n)
     for w, ns in sorted(strong_found.items()):
         hits.append(Hit("medium", "ai-vocabulary", ns[0], w + (f" (x{len(ns)}, lines {', '.join(map(str, ns[:6]))})" if len(ns) > 1 else ""),
-                        "High-frequency AI word; rewrite the sentence, do not swap in a synonym [WP]"))
+                        "Vocabulary candidate; check meaning, domain use and author voice before editing [WP]"))
     weak_total = sum(len(v) for v in weak_found.values())
     per_k = 1000 * weak_total / max(total_words, 1)
     summary["weak_vocab_per_1000_words"] = round(per_k, 1)
@@ -326,7 +366,7 @@ def scan_vocab(lines, total_words, hits, summary):
         else:
             sev = "low"
         hits.append(Hit(sev, "ai-vocabulary-cluster", min(v[0] for v in weak_found.values()), listing,
-                        f"Common words that read as AI in clusters ({per_k:.0f} per 1000 words; medium at 20+ per 1000, 6+ distinct, or 3+ from the 2026 list) [WP][D]"))
+                        f"Vocabulary cluster candidate ({per_k:.0f} per 1000 words; medium at 20+ per 1000, 6+ distinct, or 3+ from the 2026 list) [WP][D]"))
 
 
 def split_sentences(text: str):
@@ -360,20 +400,20 @@ def scan_rhythm(lines, lang, hits, summary):
     summary["share_in_8_20_band"] = round(band, 2)
     if cv < 0.35:
         hits.append(Hit("medium", "uniform-rhythm", 0, f"mean {mean:.1f} words, CV {cv:.2f}",
-                        "Sentence lengths are too even. Combine related short sentences, let one run long where the logic needs it [WP][D]"))
+                        "Even sentence lengths; check readability and genre before changing rhythm [WP][D]"))
     short_share = sum(1 for x in lengths if x <= 10) / len(lengths)
     summary["share_sentences_10_words_or_less"] = round(short_share, 2)
     if mean < 11 or short_share >= 0.6:
         hits.append(Hit("medium", "staccato", 0, f"mean {mean:.1f} words, {short_share:.0%} of sentences are 10 words or fewer",
-                        "Chain of short declaratives; join the ones that belong to one thought [WP][D]"))
+                        "Short-sentence cluster; combine only when it improves the actual reasoning [WP][D]"))
     starts = [re.match(r"[\"'“(]*([A-Za-zА-Яа-яЁёІіЇїЄєҐґ]+)", s) for s in sentences]
     demo = sum(1 for m in starts if m and m.group(1).lower() in ("this", "these", "it", "that", "это", "этот", "эта", "це", "цей", "ця"))
     if demo / len(sentences) >= 0.3:
         hits.append(Hit("low", "demonstrative-chain", 0, f"{demo}/{len(sentences)} sentences start with This/It/That",
-                        "Each sentence leans on the previous one; merge or name the subject [D]"))
+                        "Repeated demonstratives; check whether references are clear [D]"))
     if band >= 0.8 and lang == "en":
         hits.append(Hit("medium", "uniform-rhythm", 0, f"{band:.0%} of sentences are 8-20 words",
-                        "Matches the 2026 'strict 8-20 word' AI pattern [WP]"))
+                        "Concentrated sentence-length band; check whether the genre benefits from consistency [WP]"))
     # Paragraphs that all have the same number of sentences.
     counts = [len(split_sentences(p)) for p in paragraphs if word_count(p) >= 25]
     if len(counts) >= 4 and max(counts) - min(counts) <= 1:
@@ -393,29 +433,29 @@ def scan_format(lines, text, lang, total_words, hits, summary):
             sev = "medium" if per >= 1 or len(em) >= 3 else "low"
             lines_list = sorted({n for n, _ in em})
             hits.append(Hit(sev, "em-dash", lines_list[0], f"{len(em)} em dash(es), lines {', '.join(map(str, lines_list[:10]))}",
-                            "Readers treat em dashes as an AI signature; use comma, colon, parentheses or a period unless the author uses them [WP][M]"))
+                            "Dash frequency candidate; keep useful punctuation and the author's demonstrated habits [WP][M]"))
         if spaced_en:
             hits.append(Hit("low", "em-dash", spaced_en[0][0], f"{len(spaced_en)} spaced en dash(es) used as em dash",
-                            "Same tell with a different character [D]"))
+                            "Spaced en dash; judge the target language and established style [D]"))
         # Punctuation monotony: no ; ( : in a longer prose text.
         prose_text = " ".join(s for _n, _r, s, k in lines if k == "prose")
         if word_count(prose_text) >= 250 and not re.search(r"[;()]", prose_text) and not em:
             hits.append(Hit("low", "punctuation-monotony", 0, "only commas and periods in 250+ words of prose",
-                            "Newer models avoid all other punctuation; parentheses or a semicolon are normal [WP]"))
+                            "Limited punctuation variety; do not introduce variety without a readability benefit [WP]"))
 
     # Bold lead-in bullets ("- **Performance:** ...").
-    blb = [n for n, raw, _s, k in lines if k == "bullet" and BOLD_LEAD_BULLET_RE.match(raw)]
+    blb = [n for n, _raw, s, k in lines if k == "bullet" and BOLD_LEAD_BULLET_RE.match(s)]
     if len(blb) >= 2:
         hits.append(Hit("medium" if len(blb) >= 3 else "low", "inline-header-list", blb[0], f"{len(blb)} bullets start with a bold label",
                         "Inline-header vertical list [WP]"))
-    bold_prose = sum(len(BOLD_RE.findall(raw)) for n, raw, _s, k in lines if k == "prose")
+    bold_prose = sum(len(BOLD_RE.findall(s)) for n, _raw, s, k in lines if k == "prose")
     if bold_prose >= 3:
         hits.append(Hit("medium", "bold-overuse", 0, f"{bold_prose} bold spans in prose", "Boldface in running text [WP]"))
 
     # Emoji.
-    em_lines = [n for n, raw, _s, k in lines if k != "code" and EMOJI_RE.search(raw)]
+    em_lines = [n for n, _raw, s, k in lines if k not in ("code", "quote") and EMOJI_RE.search(s)]
     if em_lines:
-        hits.append(Hit("medium", "emoji", em_lines[0], f"emoji on {len(em_lines)} line(s)", "Emoji in a work document [WP]"))
+        hits.append(Hit("medium", "emoji", em_lines[0], f"emoji on {len(em_lines)} line(s)", "Emoji; check the channel and author's demonstrated voice [WP]"))
 
     # Headings.
     heads = [(n, re.sub(r"^#+\s*", "", raw.strip())) for n, raw, _s, k in lines if k == "heading"]
@@ -427,24 +467,25 @@ def scan_format(lines, text, lang, total_words, hits, summary):
             title_case.append(n)
     if title_case:
         hits.append(Hit("low", "title-case-headings", title_case[0], f"{len(title_case)} heading(s) in Title Case",
-                        "Use sentence case unless the house style says otherwise [WP]"))
+                        "Check heading case against the requested style [WP]"))
     if heads and total_words < 400 and len(heads) >= 3:
         hits.append(Hit("medium", "formatting-overuse", heads[0][0], f"{len(heads)} headings in {total_words} words",
-                        "Short text chopped into sections [M]"))
+                        "Several headings in a short text; check navigation needs and required structure [M]"))
     if lang == "en":
         h1 = [n for n, raw, _s, k in lines if k == "heading" and raw.strip().startswith("# ")]
         if len(h1) > 1:
-            hits.append(Hit("low", "formatting-overuse", h1[1], f"{len(h1)} level-1 headings", "Wrong heading levels [WP]"))
+            hits.append(Hit("low", "formatting-overuse", h1[1], f"{len(h1)} level-1 headings", "Multiple top-level headings; check the document structure [WP]"))
 
     # Curly quotes (Word autocorrect also produces these, so low).
-    if lang == "en" and re.search(r"[“”‘’]", text):
+    visible_prose = "\n".join(s for _n, _raw, s, k in lines if k not in ("code", "quote"))
+    if lang == "en" and re.search(r"[“”‘’]", visible_prose):
         hits.append(Hit("low", "curly-quotes", 0, "curly quotes present",
-                        "Mixed with straight quotes in a chat/markdown doc this is a tell; harmless in Word documents [WP]"))
+                        "Curly quotation marks; check typographic consistency without changing quoted content [WP]"))
 
     # Horizontal rules as section dividers in short docs.
     hr = [n for n, raw, _s, k in lines if k != "code" and re.match(r"^\s*(---|\*\*\*|___)\s*$", raw)]
     if len(hr) >= 2 and total_words < 800:
-        hits.append(Hit("low", "formatting-overuse", hr[0], f"{len(hr)} horizontal rules", "Decorative dividers [WP]"))
+        hits.append(Hit("low", "formatting-overuse", hr[0], f"{len(hr)} horizontal rules", "Section dividers; check whether they aid navigation [WP]"))
 
 
 def scan_triplets(sentences, hits, summary):
@@ -456,7 +497,7 @@ def scan_triplets(sentences, hits, summary):
     if share >= 0.25 and len(with_triplet) >= 3:
         ex = TRIPLET_RE.search(with_triplet[0]).group(0)
         hits.append(Hit("medium", "rule-of-three", 0, f"{len(with_triplet)}/{len(sentences)} sentences contain an 'X, Y, and Z' list, e.g. \"{ex}\"",
-                        "Lists of three used as rhythm, not content [WP]"))
+                        "Three-item list pattern; preserve distinct items and intentional parallelism [WP]"))
 
 
 def scan_repetition_openers(lines, hits):
@@ -472,14 +513,15 @@ def scan_repetition_openers(lines, hits):
     for op, ns in openers.items():
         if len(ns) >= 3 and op.split()[0] not in ("the", "a", "i", "we", "it", "this", "in"):
             hits.append(Hit("low", "repeated-opener", ns[0], f"'{op} …' starts {len(ns)} lines ({', '.join(map(str, ns[:6]))})",
-                            "Mechanically repeated sentence shape [M]"))
+                            "Repeated opener; check whether parallelism serves the content [M]"))
 
 
 # --------------------------------------------------------------------------------------
-# Token preservation check
+# Legacy token-presence view retained for CLI compatibility.
 # Compares concrete tokens (numbers, dates, identifiers, code spans, URLs) between the
 # source and the draft. It sees presence only: it does not understand meaning, cannot tell
-# that a claim was reversed, and does not count repeats.
+# that a claim was reversed, and does not count repeats. The integrated preservation
+# result below is the authoritative mechanical comparison for counts and protected blocks.
 # --------------------------------------------------------------------------------------
 
 TOKEN_RES = [
@@ -511,6 +553,8 @@ def extract_tokens(text: str):
                 v = norm_num(v)
             elif kind == "code":
                 v = v.strip("`").strip()
+            elif kind == "url":
+                v = v.strip()
             else:
                 v = v.strip().rstrip(".,)")
             if v and not (kind == "identifier" and v in COMMON_CAPS):
@@ -533,7 +577,8 @@ def token_diff(src: str, out: str):
     src_clean = LIST_MARKER_RE.sub("", src)
     missing = [(k, v) for k in src_t for v in sorted(src_t[k]) if not token_present(k, v, out_clean, out_t["number"])]
     added = [(k, v) for k in out_t for v in sorted(out_t[k]) if not token_present(k, v, src_clean, src_t["number"])]
-    neg = (len(NEGATION_RE.findall(src)), len(NEGATION_RE.findall(out)))
+    neg = (len(NEGATION_RE.findall(src.replace("’", "'"))),
+           len(NEGATION_RE.findall(out.replace("’", "'"))))
     return missing, added, neg
 
 
@@ -551,8 +596,8 @@ DEFAULT_ALLOW = [
     "statistically significant", "streamlit",
 ]
 
-# Categories that describe the shape of the whole text. Two or more of them is what makes
-# patching weak; vocabulary and single phrases can be patched in place.
+# Categories describing whole-text shape. Their combination suggests contextual
+# structure review; it never establishes a defect or requires rebuilding.
 STRUCTURAL = {"inline-header-list", "formatting-overuse", "purpose-statement", "wrap-up",
               "uniform-rhythm", "staccato", "rule-of-three", "bold-overuse", "uniform-paragraphs"}
 
@@ -579,7 +624,8 @@ def run(text: str, lang: str, source, allow=(), allow_categories=()):
         lang = detect_lang(text)
     total_words = word_count(" ".join(s for _n, _r, s, k in lines if k not in ("code",)))
     hits: list[Hit] = []
-    summary = {"language": lang, "words": total_words}
+    summary = {"language": lang, "words": total_words,
+               "interpretation": "Heuristic candidates only; severity is signal strength, not harm or authorship confidence."}
 
     patterns = {"en": EN_PATTERNS, "ru": RU_PATTERNS, "uk": UK_PATTERNS}[lang]
     scan_patterns(lines, patterns, hits)
@@ -627,9 +673,9 @@ def run(text: str, lang: str, source, allow=(), allow_categories=()):
     density = 100 * weight / max(total_words, 1)
     if total_words >= 80 and (len(structural) >= 2 or (weight >= 6 and density >= 8)):
         why = ", ".join(structural) if structural else f"{weight} weighted hits in {total_words} words"
-        summary["suggestion"] = f"rebuild-candidate ({why}); confirm against role, genre and structure before rebuilding"
+        summary["suggestion"] = f"structure-review candidate ({why}); rebuild only for a confirmed role, genre or organization problem"
     elif weight:
-        summary["suggestion"] = "patch the flagged spots"
+        summary["suggestion"] = "review candidates in context; edit only confirmed defects"
     elif hits:
         summary["suggestion"] = "only low hits; look at them, no rewrite needed on their account"
     else:
@@ -637,23 +683,41 @@ def run(text: str, lang: str, source, allow=(), allow_categories=()):
     return hits, summary, diff
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path", help="draft file, or - for stdin")
-    ap.add_argument("--source", help="original text; list tokens (numbers, dates, identifiers, code, URLs) lost or added in the draft")
+    ap.add_argument("--source", help="original UTF-8 text; run token and exact-count preservation checks")
     ap.add_argument("--lang", default="auto", choices=["auto", "en", "ru", "uk"])
     ap.add_argument("--allow", action="append", default=[], metavar="PHRASE",
                     help="phrase accepted in this text (term of art, quotation, required wording); repeatable")
     ap.add_argument("--allow-category", action="append", default=[], metavar="CATEGORY",
                     help="drop a whole category for this text, e.g. em-dash when the author uses them; repeatable")
+    ap.add_argument("--allow-lines", action="append", default=None, metavar="START:END",
+                    help="permitted inclusive ORIGINAL line range; requires --source; repeatable")
+    ap.add_argument("--protect", action="append", default=[], metavar="LITERAL",
+                    help="exact source text whose occurrence count must remain; requires --source; repeatable")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--fail-on", choices=["high", "medium"], help="exit 1 if hits at this severity or above remain, or tokens are missing")
-    args = ap.parse_args()
+    ap.add_argument("--fail-on", choices=["high", "medium"], help=(
+        "exit 1 on style candidates at this level or above, any preservation issue, "
+        "missing/added tokens, or a changed negation count; advisory exit 0 without this flag"))
+    args = ap.parse_args(argv)
+    if (args.allow_lines is not None or args.protect) and args.source is None:
+        ap.error("--allow-lines and --protect require --source")
 
-    text = sys.stdin.read() if args.path == "-" else open(args.path, encoding="utf-8").read()
-    source = open(args.source, encoding="utf-8").read() if args.source else None
-    hits, summary, diff = run(text, args.lang, source, args.allow, args.allow_category)
-    missing, added, neg = diff if diff else (None, None, None)
+    try:
+        text = (decode_utf8(sys.stdin.buffer.read(MAX_BYTES + 1), "<stdin>")
+                if args.path == "-" else read_utf8(Path(args.path)))
+        source = read_utf8(Path(args.source)) if args.source is not None else None
+        ranges = (parse_ranges(args.allow_lines, len(source.splitlines()))
+                  if args.allow_lines is not None else None)
+        preservation = (compare(source, text, literals=args.protect, ranges=ranges)
+                        if source is not None else None)
+        hits, summary, diff = run(text, args.lang, source, args.allow, args.allow_category)
+        missing, added, neg = diff if diff else (None, None, None)
+    except (OSError, ValueError) as exc:
+        error = {"status": "error", "message": str(exc)}
+        print(json.dumps(error, ensure_ascii=False) if args.json else f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
     if args.json:
         out = {"summary": summary, "hits": [asdict(h) for h in hits]}
@@ -661,12 +725,14 @@ def main():
             out["tokens_missing"] = [{"kind": k, "value": v} for k, v in missing]
             out["tokens_added"] = [{"kind": k, "value": v} for k, v in added]
             out["negations"] = {"source": neg[0], "draft": neg[1]}
+            out["preservation"] = preservation
         print(json.dumps(out, ensure_ascii=False, indent=2))
     else:
         c = summary["counts"]
         print(f"language={summary['language']} words={summary['words']} high={c['high']} medium={c['medium']} low={c['low']}")
         print(f"suggestion: {summary['suggestion']}")
-        extra = {k: v for k, v in summary.items() if k not in ("language", "words", "counts", "suggestion")}
+        print(summary["interpretation"])
+        extra = {k: v for k, v in summary.items() if k not in ("language", "words", "counts", "suggestion", "interpretation")}
         if extra:
             print("stats: " + ", ".join(f"{k}={v}" for k, v in extra.items()))
         for h in hits:
@@ -675,7 +741,7 @@ def main():
         if not hits:
             print("no pattern hits (this does not prove the text reads well; do the manual read)")
         if diff:
-            print("\nTOKEN CHECK (presence only; it does not detect reversed claims or changed meaning)")
+            print("\nTOKEN CHECK (legacy presence view; exact counts and blocks are checked below)")
             if missing:
                 print(f"  missing from draft ({len(missing)}):")
                 for k, v in missing:
@@ -690,12 +756,20 @@ def main():
                 print("  new in draft: none")
             if neg[0] != neg[1]:
                 print(f"  negations: source {neg[0]}, draft {neg[1]}; re-read every negated claim against the source")
+            print(f"\nPRESERVATION: {preservation['status']} ({preservation['issue_count']} issue(s))")
+            for issue in preservation["issues"]:
+                print(json.dumps(issue, ensure_ascii=False))
+            print(preservation["limitations"])
 
     if args.fail_on:
         threshold = SEVERITY_ORDER[args.fail_on]
-        if any(SEVERITY_ORDER[h.severity] >= threshold for h in hits) or missing:
-            sys.exit(1)
+        if (any(SEVERITY_ORDER[h.severity] >= threshold for h in hits)
+                or missing or added
+                or (neg is not None and neg[0] != neg[1])
+                or (preservation is not None and preservation["issues"])):
+            return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

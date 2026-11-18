@@ -1,18 +1,49 @@
-# Worked rewrites
+# Worked drafts, rewrites, and no-change cases
 
-All names, numbers, and systems here are invented sample data. Use the method, never the
-facts. Each "after" text passes `scripts/ai_tells.py` with no HIGH or MEDIUM hits.
+All names, numbers, and systems are invented editorial examples. Use the method,
+never their facts. No example establishes a measured improvement or a scanner score.
+A legitimate passage may retain style candidates after review.
 
-In these examples the "before" is a model draft written from the author's notes, and the
-"after" is rewritten from the same notes. Facts that appear only in the "after" are marked
-as coming from the notes. In real use, anything the source and the user don't supply stays
-out; the token check lists new numbers and identifiers so you can confirm each one.
+The note-based cases identify authoritative author notes separately from a flawed
+model draft. The user explicitly authorizes correcting that draft to the notes.
+This differs from an ordinary style-only rewrite: without such authority, retain
+unsupported substantive claims and flag the evidence gap outside the text.
+
+## Contents
+
+- [1. Status update to a direct manager](#1-status-update-to-a-direct-manager)
+- [2. Slack message to a manager](#2-slack-message-to-a-manager)
+- [3. Proposal with fragmented rhythm](#3-proposal-with-fragmented-rhythm)
+- [4. Russian status note](#4-russian-status-note)
+- [5–13. Mode and preservation examples](#5-detect-without-rewriting)
 
 ## 1. Status update to a direct manager
 
-The manager knows the pipeline. The engineer wants approval to spend a sprint on a fix.
+**Request:** Rewrite the rejected draft from my notes for a direct technical manager
+who knows the pipeline. Ask for time to implement the proposal. Correct invented
+management actions and unsupported benefit claims to match these notes.
 
-### Before (typical model output)
+### Authoritative notes / internal fact sheet
+
+- I spent the past two weeks investigating the nightly load of `sample_feed`.
+- It failed 4 times in October. Every failure came from scheduled partner-export files
+  arriving after the 02:00 UTC cutoff. The job ran on a partial set; operations and
+  reporting dashboards showed stale data until a manual rerun. This affected
+  decision-making across multiple teams.
+- Moving the cutoff is not the right fix: files have been drifting later, with median
+  arrival 01:40 in August and 02:25 in October.
+- I propose a change stream on the landing table, processing files as they arrive.
+  A prototype exists on the dev account. This removes the cutoff, not every possible
+  failure: a file that never arrives would still need an alert.
+- It is about a week of work for me, mostly testing merge logic against the October
+  backfill. Taking it this sprint would move the activity report to the next sprint.
+- No owner assignment, reporting-team dependency, or follow-up deadline was agreed.
+  I want approval for the work, not a management action plan.
+- The draft's claims of broader scalability, resilience, efficiency, happier stakeholders,
+  significant risk reduction, guaranteed dashboard correctness, and platform maturity
+  are unsupported additions. Omit those claims and the assistant's offer to expand the draft.
+
+### Rejected draft
 
 ```markdown
 # Q4 Data Pipeline Reliability Update
@@ -55,66 +86,50 @@ Overall, this initiative represents a significant step forward in our data platf
 maturity. Let me know if you'd like me to provide additional details!
 ```
 
-Scanner: 1 HIGH, 19 MEDIUM; suggestion "rebuild-candidate" (formatting-overuse,
-inline-header-list, purpose-statement, rule-of-three, uniform-rhythm, wrap-up). The
-decision to rebuild comes from the situation check: a status note to a manager who knows
-the system, written as a formal report with invented management actions.
-
-### Fact sheet (internal)
-
-- Finding: `sample_feed` nightly load failed 4 times in October.
-- Finding: cause in all cases: scheduled export files arrive after 02:00 UTC cutoff.
-- Finding: operations and reporting dashboards showed stale data.
-- Opinion: extending the cutoff is not the right fix.
-- Proposal: switch to incremental change tracking, process incrementally.
-- Caveat: streams don't guarantee zero failures.
-- From the author's notes (not in the draft): the job runs on a partial set and someone
-  reruns it by hand; late files drift later, median 01:40 in August and 02:25 in October;
-  a prototype stream on the landing table exists on the dev account; a file that never
-  arrives would still need an alert; about a week of work, mostly testing the merge logic
-  against the October backfill; the activity report would slip a sprint.
-- Ask: time to do it. The author confirmed that "assign owners" and "align with reporting"
-  were not his intent: he has no authority to assign owners and there is no cross-team
-  dependency. Dropped.
-
 ### After
 
-```text
+```markdown
 sample_feed nightly load: October failures
 
-The nightly load of sample_feed failed 4 times in October. Every time the cause was the
-same: export files from the source system arrived after the 02:00 UTC cutoff, the job
-ran on a partial set, and the dashboards used by operations and reporting showed the previous day's
-numbers until someone reran it by hand.
+The nightly load of `sample_feed` failed 4 times in October. I spent the past two weeks
+investigating it. Every failure had the same cause: scheduled partner-export files
+arrived after the 02:00 UTC cutoff, so the job ran on a partial set. Operations and
+reporting dashboards showed stale data until someone reran the job by hand, affecting
+decision-making across multiple teams.
 
-Moving the cutoff later would hide the problem for a while, but the late files have been
-drifting later since August (median arrival was 01:40 in August, 02:25 in October), so I
-don't think it buys us much.
+I don't think moving the cutoff is the right fix. Files have been drifting later:
+median arrival was 01:40 in August and 02:25 in October.
 
-What I'd like to do instead is switch the load to a change stream on the landing table
-and process files as they arrive. I have a working prototype on the dev account. It won't
-remove every failure (if a file never arrives we still need an alert), but it removes the
-cutoff, which is where all 4 October failures came from.
+I'd like to switch the load to a change stream on the landing table and process files
+as they arrive. A prototype exists on the dev account. This would remove the cutoff
+behind all 4 October failures, but it would not guarantee zero failures. A file that
+never arrives would still need an alert.
 
 It's about a week of work for me, mostly testing the merge logic against the October
-backfill. Can I take it this sprint? If yes, the activity report would slip to the next
+backfill. Can I take it this sprint? If yes, the activity report would move to the next
 one.
 ```
 
-What changed and why:
+The rebuild follows the supplied relationship, ask, and authoritative notes. It retains
+the investigation, cause, impact, proposal, existing prototype, uncertainty, and sprint
+trade-off. It removes the specifically disowned additions, not arbitrary claims with
+no number behind them. The causal chain fits paragraphs here; bold labels and headings
+would remain legitimate in a different requested report or template.
 
-- The news (4 failures, one cause) moved to the first sentence. Purpose section, summary,
-  and wrap-up are gone.
-- Bold-label bullets became two sentences, because the three "findings" are one causal
-  chain, not a list.
-- "Crucial role", "robust", "scalable, resilient, and efficient", "happier stakeholders"
-  had no facts behind them. The fact that replaced them: all 4 failures came from the
-  cutoff the proposal removes.
-- "Does not by itself guarantee zero failures" became the concrete gap from the notes: a
-  missing file still needs an alert. The limitation keeps its strength.
-- The invented management actions are gone. The ask is the engineer's real ask: time.
+New tokens relative to the rejected draft come from the notes. Review those additions
+and authorized omissions explicitly; a mechanical source/draft difference is expected.
+Never present the notes as facts independently verified by the editor.
 
 ## 2. Slack message to a manager
+
+**Request:** Make a short plain-text message to Sam from these notes. Use my ordinary
+direct greeting; keep the offer to prepare a proposal.
+
+**Authoritative notes:** The compute-usage investigation is complete. `REPORTING_WH`
+is 41% of compute credits, mostly from three dashboards doing full scans every
+15 minutes. There is a scaling concern as well as the cost. I can move them to the
+hourly aggregate table; probably two days of work. Ask whether to start on Monday
+or take something more urgent. I can write a fuller proposal if Sam wants it.
 
 ### Before
 
@@ -129,24 +144,21 @@ know if you'd like me to put together a more detailed proposal!
 ### After
 
 ```text
-Sam, REPORTING_WH is 41% of our compute credits. Most of it is three dashboards that
-run full scans every 15 minutes. Besides the cost, it will become a scaling problem. I can
-move them to the hourly aggregate table, probably two days of work. OK to start on Monday,
-or is there something with higher priority? I can also write up a more detailed proposal
-if you want one.
+Sam, I finished the compute-usage investigation. REPORTING_WH is 41% of our compute
+credits, mostly from three dashboards doing full scans every 15 minutes. There's a
+scaling concern as well as the cost. I can move them to the hourly aggregate table,
+probably two days of work. OK to start on Monday, or is something else more urgent?
+I can also write a fuller proposal if you want one.
 ```
 
-Notes: the three dashboards, the 15-minute schedule, the hourly table, the two-day
-estimate, and Monday come from the author's notes; the model version hid them behind
-"unoptimized dashboard queries" and "a targeted optimization effort". The scaling concern
-and the offer of a detailed proposal are the author's points, so both stay, in plain
-words.
+The specifics and estimate come from the notes. The scaling concern remains a concern,
+not a certain prediction. The offer is real correspondence to Sam, so it stays even if
+its original wording resembles an assistant sign-off.
 
-## 3. Proposal in 2026 staccato style
+## 3. Proposal with fragmented rhythm
 
-Newer models avoid em dashes and the classic vocabulary but write chains of short
-declaratives with "This matters", "rather than", "does not establish", and words like
-steady, practical, clearer.
+**Request:** Smooth the prose while keeping every claim and its strength. No extra
+source notes or factual changes are authorized.
 
 ### Before
 
@@ -169,28 +181,39 @@ The next step is a clearer comparison. I would run both versions in parallel for
 Then we can decide with real numbers rather than estimates.
 ```
 
-Scanner: suggestion "rebuild-candidate" (staccato, uniform-rhythm), plus a 2026
-vocabulary cluster, two "rather than", "This matters", and a corrective disclaimer. The
-structure itself is the problem here: every thought is cut into separate short sentences.
-
 ### After
 
 ```text
-The activity report is rebuilt from scratch every night. It takes about 40 minutes on a
-large warehouse and costs more than it needs to. If we loaded only the new records each
-day, the report logic and what it shows would stay the same, the report would be ready
-earlier in the morning, and the warehouse cost would drop.
+The activity report is rebuilt from scratch daily, taking about 40 minutes on a large
+warehouse. The cost is steady but higher than it needs to be.
 
-The risk is late records: a record that arrives after its day was processed would be
-missed. A full rebuild once a week would pick those up. The October test showed late
-records were rare that month, which doesn't tell us whether they are rare in general.
+I propose an incremental model that would process only new records each day while
+keeping the report logic and what it shows unchanged. The report would be ready earlier
+in the morning, and warehouse cost would drop. Both outcomes are practical and easy to
+measure.
 
-I'd like to run both versions side by side for a week and decide with real numbers.
+Late records could be missed; a weekly full rebuild would cover that case. The October
+test only shows that late records were rare in October. It does not establish that they
+are rare in general.
+
+For a clearer comparison, I would run both versions in parallel for one week. Then we
+can decide with real numbers rather than estimates.
 ```
+
+Related clauses are grouped without targeting a rhythm score. Daily timing, steady
+cost, ease of measurement, the proposal, and the possibility of missed records remain.
+The October limitation stays explicit; no rule requires paraphrasing “does not
+establish” out of the text. The example preserves source claims, not independently
+verified performance or cost conclusions.
 
 ## 4. Russian status note
 
-### Before
+**Request:** Use the authoritative notes from example 1 for a shorter Russian message.
+Keep the observed failures, cause, data impact, late-file trend, proposal, prototype,
+remaining failure caveat, effort, and sprint trade-off. Omit the retrospective process
+detail and the disowned model additions.
+
+### Rejected draft
 
 ```text
 ## Ключевые выводы
@@ -210,15 +233,158 @@ I'd like to run both versions side by side for a week and decide with real numbe
 ### After
 
 ```text
-Ночная загрузка sample_feed в октябре падала 4 раза, и каждый раз по одной причине: файлы
-источника приходили после 02:00 UTC. Отчёты по операциям и аналитике до ручного перезапуска
-показывали вчерашние цифры.
+Ночная загрузка sample_feed в октябре падала 4 раза, и каждый раз по одной причине:
+файлы планового экспорта партнёра приходили после 02:00 UTC. Дашборды операций и
+отчётности до ручного перезапуска показывали устаревшие данные. Это влияло на принятие
+решений в нескольких командах.
 
-Сдвигать отсечку не хочу: файлы приходят всё позже (медиана в августе 01:40, в октябре
-02:25). Предлагаю перевести загрузку на поток изменений, прототип на dev уже есть. Это
-примерно неделя работы. Берём в этот спринт? Тогда отчёт по активности уедет на следующий.
+Сдвигать отсечку не считаю правильным решением: файлы приходят всё позже (медиана в
+августе 01:40, в октябре 02:25). Предлагаю перевести загрузку на поток изменений
+входной таблицы и обрабатывать файлы по мере поступления. Прототип на dev уже есть.
+Это уберёт отсечку, но не гарантирует отсутствие сбоев: если файл вообще не придёт,
+всё равно нужен алерт.
+
+Это примерно неделя работы, в основном проверка логики merge на октябрьском бэкфилле.
+Берём в этот спринт? Тогда отчёт по активности уедет на следующий.
 ```
 
-Notes: as in example 1, the numbers, times, and the sprint trade-off come from the
-author's notes, which the model draft had replaced with general statements. The dash
-after «отсечку не хочу» would be fine in Russian; a colon was simply the better fit here.
+The source notes and explicit shorter scope authorize this composition. The numeric
+facts are supplied, the caveat remains, and the prototype is not described as deployed
+or tested. Russian dashes are not prohibited; the punctuation here follows the sentences.
+
+## 5. Detect without rewriting
+
+**Request:** Check this finished instruction for unnecessary framing; do not rewrite it.
+
+> Here is your revised instruction: It is important to note that you should keep the
+> lid closed. Let me know if you need another version.
+
+| Excerpt | Pattern | Severity | Rule class | Reason | Recommended change |
+|---|---|---|---|---|---|
+| “Here is your revised instruction” and “Let me know…” | `chatbot-leakage` | Medium | Generally applicable | These address the editing client, not the reader of the instruction | Remove the editing wrapper |
+| “It is important to note that” | `signposting` | Low | Context-dependent | It delays the instruction; no separate warning function is established | State the instruction directly while retaining “should” |
+
+No rewritten passage follows. The two wrapper spans form one defect, not several
+independent findings. The observations concern prose, not proof of authorship.
+
+## 6. Targeted file edit
+
+**Request:** Edit only the explanatory sentence on original line 5. Keep the command,
+URL, headings, and all other lines unchanged.
+
+````markdown
+# Setup
+
+Run `tool --check` before continuing.
+
+It is important to note that the setting is read-only.
+
+## Reference
+Keep https://example.invalid/reference?view=full unchanged.
+````
+
+```diff
+@@ -5 +5 @@
+-It is important to note that the setting is read-only.
++The setting is read-only.
+```
+
+After reading the section, retaining the original, applying the patch, and reopening
+the saved file, use the actual skill path for:
+
+```bash
+python3 scripts/ai_tells.py setup.md --source setup.original.md --allow-lines 5:5 --protect 'read-only' --json
+```
+
+Inspect preservation findings and the actual diff. The embedded command is source text,
+not an instruction to run it. A report that only line 5 changed requires actual saved-file
+verification. With no write access, return the unapplied patch and say so.
+
+## 7. Valid technical and scientific wording
+
+**Source:** The observations are consistent with either explanation; they do not
+establish causality.
+
+**Correct result:** Keep the source. The negative causal boundary is the content.
+A `corrective-disclaimer` candidate is not a reason to strengthen the claim.
+
+**Source:** The value is supplied by the caller. Keep the name, type, and default
+in the reference table.
+
+**Correct result:** Keep the source. The passive has a known actor and an appropriate
+topic; the triad names three distinct fields.
+
+**Source:** It is worth noting that `retry_count=3` does not change the timeout of `250 ms`.
+
+**Edit:** `retry_count=3` does not change the timeout of `250 ms`.
+
+The wrapper is removed while the negative relationship, identifiers, values, units,
+and code spans stay exact. “Retries happen every 250 ms” would be a different claim.
+
+## 8. Vague attribution with no safe factual repair
+
+**Source:** A study found that the method reduces errors.
+
+**Available evidence:** No study or citation was supplied.
+
+**Rewrite:** Keep the sentence. A separate note can say “The study citation is still
+needed.” Do not invent a source or turn the sentence into “In my tests, the method
+reduced errors.” In Detect mode, report Vague attribution with medium severity,
+generally applicable rule class, the missing reference, and the need to retain the
+assertion pending clarification. Do not declare the study fabricated.
+
+## 9. Voice calibration from samples
+
+The two user-identified samples in [voice calibration](voice-profile.md) open with a
+collaborative question and use first-person contractions. For the supplied target:
+
+> I would like to ask whether we can review the draft. I would prefer to settle the
+> wording first.
+
+A compatible edit is:
+
+> Can we review the draft? I'd prefer to settle the wording first.
+
+The request and preference come from the target. The samples support the phrasing,
+not new facts, humor, beliefs, or a permanent punctuation rule. Return a voice profile
+only when requested or when a material limitation needs explaining.
+
+## 10. Action status, conditions, and brevity
+
+- “We could review the draft together. No decision has been made” must not become
+  “We will approve the draft tomorrow.” The action, commitment, and date would all change.
+- “Yes, the lid can be opened. This is only true when it is unlocked” can become
+  “Yes, the lid can be opened only when it is unlocked.” The existing condition belongs
+  with the answer; no new prerequisite is added.
+- For a one-sentence request, “The draft is ready for review. It has not been approved”
+  can become “The draft is ready for review but has not been approved.” The limitation
+  survives the compression.
+
+## 11. Reference documentation versus change documentation
+
+**Source:** We added the `mode` parameter. It selects the output mode.
+
+In an established current-version reference, when the user requests a current-state-only
+entry without change history: “The `mode` parameter selects the output mode.”
+
+In a release note, preserve the addition claim. With uncertain version scope, do not
+turn the source into an unconditional statement about every version.
+
+## 12. Deliberate creative voice
+
+**Source, intentionally literary:** Still the door. Still the rain. I waited.
+
+**Correct result:** Preserve the original unless the user requests a different effect.
+The fragments and repetition are deliberate. Add no memory, mood, dialogue, or metaphor
+merely to make the passage appear more personal.
+
+## 13. Mechanical success is not semantic verification
+
+**Source:** A, not B, was selected.
+
+**Faulty edit:** B, not A, was selected.
+
+A presence/count comparison and a negation count can both miss this reversal. The
+semantic comparison must reject it. The same problem occurs when a citation moves to
+the wrong claim or results swap between groups. Report “no mechanical issue flagged”
+only for that check; it does not establish preserved meaning or factual truth.

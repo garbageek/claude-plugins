@@ -1,76 +1,113 @@
 # Sources and design choices
 
-## External sources read for this version (2026-11-05)
+## Current baseline: Humanizer 3.2.0
 
-| Source                                                                                                  | Used for                                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wikipedia, "Signs of AI writing": https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing           | Pattern catalog, vocabulary by model era (incl. the mid-2026 list), corrective disclaimers, em dash history, ineffective indicators, detector caveats |
-| Agent Skills specification: https://github.com/agentskills/agentskills/blob/main/docs/specification.mdx | Frontmatter limits (name 64, description 1024 chars), folder layout, under-500-lines recommendation                                                   |
-| Claude Code skills docs: https://code.claude.com/docs/en/skills.md                                      | Description is truncated at 1,536 chars in the listing, put the key use case first                                                                    |
+This revision combines the two user-supplied implementations. The current workflow
+is defined by `SKILL.md` and its references; historical design choices below are
+provenance, not instructions to apply an older default.
 
-The Wikipedia page was read in full (raw text), not as a summary. It describes
-encyclopedia edits; its examples were adapted to workplace documents here, and those
-adaptations are design choices.
+| Supplied source | Retained strengths | Reconciled behavior |
+|---|---|---|
+| Artur Plugins Humanizer 3.1.2, in `claude-plugins-main (5).zip` | Drafting in the user's name, workplace role/genre checks, patch versus rebuild, accepted-feedback handling, EN/RU/UK scanner, practical examples, existing interface/assets | Pattern matches are candidates; blanket word/format bans and zero-hit stopping rules are removed. |
+| `humanizer-production.zip` (no version declared in its frontmatter) | Context gates, preservation of unsupported substantive claims, evidence-based voice calibration, technical/scientific constraints, count-aware preservation and original-line scope checks | Added the drafting route and existing scanner rather than replacing them; integrated the checker into `ai_tells.py --source`. |
 
-## User-supplied material
+Production's large catalog is consolidated into `references/patterns.md`, not copied
+as a second competing catalog. Voice calibration is integrated into the existing
+`references/voice-profile.md`. Context routing and technical details have separate,
+conditionally loaded references.
 
-- The earlier `humanizer` skill (preservation contract, Detect/Rewrite/Edit modes, closed
-  finding vocabulary, non-native register rules, em dash and idiom rules).
-- The GPT-prepared v2 (`humanizer-v2.zip`): communication-situation check, genre table,
-  speech-act and role rules, feedback handling. `references/context-cases.md` is taken
-  from it with a new header.
-- The research archive (`context-aware-humanizer-repaired-2026-11-05.zip`): research
-  report, `context-aware-writer` skill, speaker-recipient fit, voice rules, the four
-  failure signals from the meeting-notes incident (auditor questions, timeboxed agenda,
-  assigned owners, ceremonial header). The 25 upstream skills it lists were not bundled
-  in the archive and were not fetched for this version.
+## Current design choices
 
-## Design choices (not from a measured study)
+These are editorial and implementation choices, not measured accuracy claims.
 
-- Default-remove surface tells instead of judging them case by case. The earlier versions
-  explicitly treated em dashes, bold, lists, and AI vocabulary as neutral; readers detect
-  AI text by those features.
-- Deterministic scanner plus token check, because self-review by the generating model does
-  not see its own defaults. The scanner is advisory: its `suggestion` line never forces a
-  rebuild, and accepted exceptions (`--allow`, `--allow-category`, plus a built-in list of
-  technical terms such as "primary key") stop counting.
-- Rebuild from a fact sheet when the role, genre, argument order, or structure is wrong;
-  patch local tells; leave accepted or already direct text alone, whoever wrote it. This
-  is v2's rule; v3.0.0 had widened it to "any model-written source" and 3.1.0 reverts that.
-- Severity by consequence (v2's scale, restored in 3.1.0): meaning, role, commitment, and
-  limitation changes outrank any number of style hits.
-- Drafting in the user's name came from v2 (Draft mode and its description); the
-  installed pre-v2 skill only covered requests to humanize.
-- Russian and Ukrainian pattern lists, corporate idiom list, setup-reveal and staccato
-  checks, and all scanner thresholds (CV < 0.35, mean < 11 words, 25% of sentences with
-  three-item lists, the structural-category and density rules for the rebuild suggestion,
-  the vocabulary cluster thresholds) are tuned on a handful of samples, not validated on a
-  corpus.
+- Require a demonstrated defect and a safe correction. A dash, triad, passive,
+  uncertainty phrase, repeated technical term, or heading is not an error by itself.
+  Explicit author preferences still govern the requested voice.
+- Keep unsupported substantive assertions and flag evidence gaps separately.
+  Removing empty framing must not erase a claim, qualifier, comparison, or criticism.
+- Retain the independent scanner as a source of review candidates. Its severity is
+  heuristic strength, separate from consequence-based editorial severity.
+  Its suggestions never require a rewrite or rebuild.
+- Retain local patches for local problems and section rebuilding for a demonstrated
+  role, artifact, or organizational failure. Preserve accepted edits.
+- Use source content for facts and comparable author samples for style. Distinguish
+  observed, requested, tentative, and unsupported voice traits; do not infer a
+  biography or transfer sample facts into the target.
+- Run the stronger preservation comparison automatically with `--source`.
+  It counts recognized occurrences, protects blocks and exact literals, and can
+  check original-line boundaries. Existing token summary keys remain available;
+  they do not replace the detailed `preservation` result.
+- Keep `--allow` and `--allow-category` confined to style candidates. Neither can
+  hide protected-content changes. `--allow-lines` permits locations, not semantic
+  changes or invariant loss.
+- Preserve read-only helpers with standard-library dependencies. Python 3.10+ is
+  needed for the helpers; the manual editorial workflow does not require Python.
+
+## Historical external-source provenance
+
+The 3.1.2 source records the following material as read on 2026-11-05.
+Those source-reading claims belong to that revision; the merge does not claim a new
+external review or use these pages as empirical validation of scanner thresholds.
+
+| Recorded source | Role in the earlier version |
+|---|---|
+| [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) | Vocabulary and surface-pattern examples, ineffective indicators, detector caveats. Encyclopedia-editing examples were adapted to workplace prose. |
+| [Agent Skills specification](https://github.com/agentskills/agentskills/blob/main/docs/specification.mdx) | Frontmatter and package-layout guidance. |
+| [Claude Code skills documentation](https://code.claude.com/docs/en/skills.md) | Earlier host-discovery and description guidance. |
+
+Wikipedia pattern examples are not a validated classifier for workplace, scientific,
+personal, or multilingual writing. `[WP]` notes in the inherited scanner mark
+provenance, not proof that a given match is wrong. `[M]` refers to supplied materials;
+`[D]` marks a design choice. Historic model-era vocabulary labels do not establish
+when or by whom a passage was written.
+
+## Earlier supplied material
+
+The 3.1.2 provenance records:
+
+- An earlier Humanizer with preservation, Detect/Rewrite/Edit modes, finding labels,
+  and non-native-register rules.
+- `humanizer-v2.zip`, which added communication context, genre routing, role and
+  speech-act preservation, and feedback handling.
+- `context-aware-humanizer-repaired-2026-11-05.zip`, containing a research report
+  and context-aware writing instructions. The 25 upstream skills listed there were
+  not bundled or fetched for 3.1.2.
+
+The present merge directly inspected the two supplied archives listed at the top;
+it does not claim independent inspection of these earlier artifacts.
 
 ## Known limits
 
-- The scanner finds surface patterns. A clean scan does not mean the text sounds like the
-  author; step 5 of the workflow and the user's own samples cover that.
-- The token check compares presence of exact tokens (numbers, dates, identifiers, code
-  spans, URLs) in both directions and reports a change in the number of negations. It
-  does not count repeats (if "9" appears twice in the source and once in the draft, it
-  reports nothing), does not read numbers written as words, and cannot tell that a claim
-  was reversed or a limitation dropped. That is what step 5 of the workflow is for.
-- AI style shifts with each model generation ([WP] documents at least four eras since
-  2023). The vocabulary lists need updating as new models ship.
+- Pattern lists, vocabulary sets, rhythm thresholds, density rules, and repeated-hit
+  escalation are heuristics inherited from a small set of examples, not a validated
+  corpus. EN, RU, and UK do not have equal rule coverage. A clean scan establishes
+  neither good writing, author resemblance, nor human authorship.
+- The preservation helper is a conservative UTF-8/Markdown recognizer, not a parser
+  for every document format. It may flag authorized edits and overlapping tokens.
+  Unrecognized names, units, number words, syntax, or implicit structure need explicit
+  protection or manual review. See the technical reference for exact coverage.
+- Occurrence counts cannot track semantic relationships. Swapping subjects, attaching
+  a citation to another claim, exchanging values between groups, or changing a modal
+  verb can pass a mechanical comparison.
+- Negation counts are an additional review cue, not a logical-equivalence check.
+  An unchanged count can conceal a reversal; a changed count can be an authorized
+  clarification.
+- Original-line scope uses a line diff. Repeated text can produce ambiguous alignment;
+  insertion boundaries are deliberately conservative. Inspect the actual saved diff.
+- `--fail-on` is an opt-in gate for reported candidates/differences. Default scanner
+  success does not mean there were no findings. A checker error is not a completed
+  comparison. Host installation and model behavior require their own evidence.
 
-## 3.1.1 editorial additions (2026-11-09)
+## Retained revision history
 
-Five narrowly scoped rules were retained from the repository's previous
-`skills/humanizer/SKILL.md`: neutral decision framing, current-behavior-first
-durable documentation, strict brevity when requested, condition-first answers, and
-flagging suspected factual errors instead of silently correcting them. The 3.1.0
-scanner, patch/rebuild logic, role checks, and default AI-pattern removal were
-unchanged at that point. These are editorial safeguards, not empirically validated improvements.
+**3.1.1 (2026-11-09):** Added neutral decision framing, current-behavior-first durable
+documentation, requested brevity, condition-first answers, and separate factual-error
+flagging. These remain subject to claim and version-scope preservation.
 
-## 3.1.2 packaging and example refresh (2026-11-09)
+**3.1.2 (2026-11-09):** Preserved decimal commas in the old token normalization and
+supported accepted phrases across soft line wraps. Examples used generic invented
+systems and roles. The earlier default-removal policy is superseded by 3.2.0.
 
-The scanner retains the two PR #22 fixes: decimal commas remain distinct in number
-normalization and accepted phrases can cross a soft line wrap without losing line
-numbers. Worked examples use invented generic systems and roles instead of a
-particular employer or production environment. The editorial workflow is unchanged.
+**3.2.0 (2026-11-18):** Combined context-sensitive editing with the existing drafting
+and scanning workflow, integrated count-aware preservation, strengthened voice and
+technical guidance, and reconciled worked examples with their stated source facts.
