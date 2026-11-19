@@ -4,8 +4,7 @@ The scanner locates possible surface patterns. Its HIGH/MEDIUM/LOW values descri
 heuristic signal strength, not authorship probability or the consequence of an edit.
 Use the consequence-based severity in `SKILL.md` for confirmed findings.
 
-Source provenance and design limits are recorded in [SOURCES.md](../SOURCES.md).
-The vocabulary and rhythm heuristics are not validated authorship tests. Retained
+Vocabulary and rhythm heuristics are not validated authorship tests. Retained
 scanner category names appear in backticks; manual checks have no automatic coverage
 unless explicitly stated.
 

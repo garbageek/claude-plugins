@@ -2,7 +2,7 @@
 name: humanizer
 description: Drafts, rewrites, and reviews prose in the user's own voice, including reports, status updates, proposals, design docs, emails, chat, meeting notes, and talking points. Use whenever drafting or editing text sent under the user's name, even without an explicit humanize request; also for humanize, de-slop, remove AI smell, make text sound less like ChatGPT/GPT/Claude, match writing samples, analyze voice, and "очеловечь", "убери AI-стиль", "звучит как нейросеть". Preserve meaning, technical precision, and the author's position. English, Russian, Ukrainian; advisory pattern scanner and preservation helpers use Python 3.10+, standard library only. Not for unrelated code review or fact-checking.
 metadata:
-  version: "3.2.0"
+  version: "3.2.1"
 ---
 
 # Humanizer
@@ -272,4 +272,3 @@ Load only what the task needs:
 - [Examples](references/examples.md): workplace rewrites and mode-specific examples.
 - [Scanner](scripts/ai_tells.py) and [preservation checker](scripts/preservation_check.py):
   read-only helpers; neither establishes authorship or semantic equivalence.
-- [Sources and design choices](SOURCES.md): provenance and unvalidated assumptions.
