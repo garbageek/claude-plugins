@@ -38,8 +38,7 @@
     "defaultPrompt": [
       "Review this repository for confirmed defects and regressions without editing files.",
       "Create an implementation-ready architecture and change plan for this codebase.",
-      "Inspect this Claude Code or Codex plugin for packaging and compatibility issues.",
-      "Use $mikrotik-routeros to inspect my MikroTik network and diagnose connectivity."
+      "Inspect this Claude Code or Codex plugin for packaging and compatibility issues."
     ],
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png"
