@@ -1,7 +1,7 @@
 {
   "name": "artur-plugins",
-  "version": "1.5.0",
-  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, Agent Skill creation and evaluation, and Claude/Codex plugin authoring and installation management.",
+  "version": "1.6.0",
+  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, MikroTik RouterOS operations, Agent Skill creation and evaluation, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Plugins contributors"
   },
@@ -12,7 +12,9 @@
     "audit",
     "skills",
     "documentation",
-    "plugins"
+    "plugins",
+    "mikrotik",
+    "routeros"
   ],
   "displayName": "Artur Plugins"
 }
