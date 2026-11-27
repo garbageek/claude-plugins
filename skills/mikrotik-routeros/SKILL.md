@@ -27,4 +27,4 @@ Live work requires a configured management transport with access to the target. 
 
 Typical requests include listing MikroTik routers, tracing a UDP port, diagnosing Wi-Fi roaming or adding a DHCP reservation. General networking theory, shopping and code that merely mentions a router belong to their respective workflows. [RouterOS CLI reference](https://manual.mikrotik.com/docs/cli-reference/).
 
-Use the [MikroTik manual index](https://manual.mikrotik.com/llms.txt) to locate a specific guide, CLI menu or hardware page. Follow the primary sources in each reference and check the installed version. See [third-party notices](THIRD-PARTY-NOTICES.md) for adapted material.
+Use the [MikroTik manual index](https://manual.mikrotik.com/llms.txt) to locate a specific guide, CLI menu or hardware page. Follow the primary sources in each reference and check the installed version. See [third-party notices](../../THIRD_PARTY_NOTICES.md) for adapted material.
