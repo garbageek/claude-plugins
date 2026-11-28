@@ -20,6 +20,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Workflow | Skills | Requirements |
 |---|---|---|
 | Audit and review | [`deep-review`](skills/deep-review/SKILL.md), [`review-feedback`](skills/review-feedback/SKILL.md), [`feature-scattering`](skills/feature-scattering/SKILL.md), [`audit-init`](skills/audit-init/SKILL.md), [`audit-status`](skills/audit-status/SKILL.md), [`audit-next`](skills/audit-next/SKILL.md), [`audit-discovery`](skills/audit-discovery/SKILL.md), [`audit-triage`](skills/audit-triage/SKILL.md), [`audit-resolution`](skills/audit-resolution/SKILL.md), [`audit-verification`](skills/audit-verification/SKILL.md) | Python for requested audit lifecycle and scanning; optional MCP setup; Git history optional |
+| Project purpose | [`clarify-project-purpose`](skills/clarify-project-purpose/SKILL.md) | User goals and relevant project decisions or examples of actual use |
 | Architecture and recovery | [`architect`](skills/architect/SKILL.md), [`recover`](skills/recover/SKILL.md) | Source/requirements for the requested scope |
 | Debugging and session diagnosis | [`debug`](skills/debug/SKILL.md), [`diagnose-session`](skills/diagnose-session/SKILL.md) | Access to the failing project or command; local agent-session transcripts for diagnosis |
 | Prompts | [`design-prompts`](skills/design-prompts/SKILL.md) | Model/tool contract when target-specific |
