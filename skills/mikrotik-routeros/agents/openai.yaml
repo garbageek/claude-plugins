@@ -1,0 +1,6 @@
+interface:
+  display_name: MikroTik RouterOS
+  short_description: Inspect and manage MikroTik RouterOS devices
+  default_prompt: Use $mikrotik-routeros to diagnose or manage my MikroTik RouterOS network.
+policy:
+  allow_implicit_invocation: true

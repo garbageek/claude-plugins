@@ -1,7 +1,7 @@
 {
   "name": "artur-plugins",
-  "version": "1.6.0",
-  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, Agent Skill creation and evaluation, and Claude/Codex plugin authoring and installation management.",
+  "version": "1.7.0",
+  "description": "Engineering skills for architecture, governed audits, source-backed documentation, repository instructions, prompts, writing, operations, handover, MikroTik RouterOS operations, Agent Skill creation and evaluation, and Claude/Codex plugin authoring and installation management.",
   "author": {
     "name": "Artur Plugins contributors"
   },
@@ -12,13 +12,15 @@
     "audit",
     "skills",
     "documentation",
-    "plugins"
+    "plugins",
+    "mikrotik",
+    "routeros"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Artur Plugins",
     "shortDescription": "Engineering skills for agents",
-    "longDescription": "Engineering workflows for code review, debugging, agent-session diagnosis, architecture, implementation planning, audit tickets, project recovery, codebase documentation, repository guidance, Agent Skill creation/evaluation, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
+    "longDescription": "Engineering workflows for code review, debugging, agent-session diagnosis, architecture, implementation planning, audit tickets, project recovery, codebase documentation, MikroTik RouterOS inspection and operations, repository guidance, Agent Skill creation/evaluation, and Claude Code/Codex plugin management. Use them with accessible project files and tools. Read-only review and planning do not require audit setup; audit lifecycle commands require Python 3.10+ and a writable project workspace. The bundled local MCP server is optional and must be configured separately. Installation starts no hooks, services, or servers.",
     "developerName": "Artur Plugins contributors",
     "category": "Developer Tools",
     "capabilities": [
@@ -30,7 +32,8 @@
       "Recover broken implementations",
       "Document codebases and repositories",
       "Create and evaluate Agent Skills",
-      "Create and maintain agent plugins"
+      "Create and maintain agent plugins",
+      "Inspect and manage MikroTik RouterOS networks"
     ],
     "defaultPrompt": [
       "Review this repository for confirmed defects and regressions without editing files.",

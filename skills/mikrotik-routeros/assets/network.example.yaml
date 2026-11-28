@@ -1,0 +1,9 @@
+# Optional operator metadata. Use the separate inventory for WireSage MCP.
+routers:
+  - alias: "<configured-device-title-or-ssh-alias>"
+    model_hint: "<optional-model-from-owner-notes>"
+    role_hint: unknown
+    tags: []
+network_expectations:
+  lan_cidr: "<known-or-unknown>"
+  ipv6_state: unknown
