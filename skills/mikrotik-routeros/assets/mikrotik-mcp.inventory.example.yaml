@@ -1,0 +1,7 @@
+# Replace placeholders with provisioned values. Keep the real file outside the skill.
+- title: "<unique-device-title>"
+  host: "<actual-management-address-or-hostname>"
+  port: 22
+  username: "<existing-router-user>"
+  key_filename: "/absolute/path/to/dedicated-ssh-private-key"
+  tags: []

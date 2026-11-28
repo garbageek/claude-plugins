@@ -2,7 +2,7 @@
 
 **Artur Plugins** is one installable engineering toolkit for Claude Code and Codex.
 Architecture, audits, documentation, repository guidance, prompts, writing,
-operations, handover, plugin authoring, and installation management share one package and one namespace:
+operations, MikroTik RouterOS, handover, plugin authoring, and installation management share one package and one namespace:
 `artur-plugins`. The marketplace is also named `artur-plugins`.
 
 Skills load for the requested task; installing the toolkit does not authorize
@@ -28,6 +28,7 @@ Use `/artur-plugins:<skill>` in Claude Code or `$<skill>` in Codex.
 | Repository instructions | [`init-repo-instructions`](skills/init-repo-instructions/SKILL.md), [`review-repo-instructions`](skills/review-repo-instructions/SKILL.md), [`copilot-review-customizer`](skills/copilot-review-customizer/SKILL.md) | Actual repository and current host/GitHub documentation |
 | Prose drafting and editing | [`humanizer`](skills/humanizer/SKILL.md) | Supplied facts or text; optional author samples; Python 3.10+ for advisory helpers |
 | Codex on Ubuntu | [`codex-ubuntu-server`](skills/codex-ubuntu-server/SKILL.md) | Access to the selected Ubuntu host |
+| Network operations | [`mikrotik-routeros`](skills/mikrotik-routeros/SKILL.md) | Configured MikroTik MCP, SSH or RouterOS API access for live work; offline CLI references need no connection |
 | Session continuity | [`uncompromising-handover`](skills/uncompromising-handover/SKILL.md) | An accessible checkpoint destination |
 | Agent Skill authoring | [`create-skill`](skills/create-skill/SKILL.md) | Python 3 and PyYAML for validation and packaging; authenticated Claude or Codex CLI only for requested evaluations |
 | Plugin authoring | [`create-plugin`](skills/create-plugin/SKILL.md), [`inspect-plugin`](skills/inspect-plugin/SKILL.md), [`update-plugin`](skills/update-plugin/SKILL.md) | Local files; connected Plugin Creator only for hosted operations |
